@@ -1,6 +1,5 @@
-import { NotFoundError } from "@/server/errors";
 import { jsonOk, parseJsonBody, route } from "@/server/http";
-import { getProjectRepository } from "@/server/repositories";
+import { updateCaptionSettings } from "@/server/services/caption-service";
 import { captionSettingsSchema } from "@/server/validation/caption-schemas";
 
 interface RouteContext {
@@ -9,16 +8,6 @@ interface RouteContext {
 
 export const PUT = route(async (request: Request, context: RouteContext) => {
   const { id } = await context.params;
-  const captionSettings = await parseJsonBody(request, captionSettingsSchema);
-
-  const updated = await getProjectRepository().update(id, {
-    captionSettings,
-    updatedAt: new Date().toISOString(),
-  });
-
-  if (!updated) {
-    throw new NotFoundError(`No project found with id "${id}".`);
-  }
-
-  return jsonOk(updated);
+  const settings = await parseJsonBody(request, captionSettingsSchema);
+  return jsonOk(await updateCaptionSettings(id, settings));
 });

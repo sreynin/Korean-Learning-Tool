@@ -239,7 +239,7 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       topic: spec.topic,
       description: spec.description,
       format: spec.format,
-      status: spec.status,
+      status: "draft",
       level: spec.level,
       targetLanguage: "korean",
       // Cycled so the sample library exercises every option in the filters.
@@ -251,29 +251,31 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       scenes: null,
       voiceSettings: defaultVoiceSettings("korean"),
       captionSettings: DEFAULT_CAPTION_SETTINGS,
-      pipeline: buildPipelineFor(spec.status),
+      captionsConfigured: false,
+      previewReviewedAt: null,
+      latestRender: null,
+      hasRenderOutput: false,
+      pipeline: buildSeedPipeline(),
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),
     } satisfies VideoProject;
   });
 }
 
-function buildPipelineFor(status: ProjectStatus): ProjectPipeline {
-  const completeThrough =
-    status === "completed" ? PIPELINE_STAGES.length : status === "in_progress" ? 5 : 1;
+/**
+ * Seeded projects carry a topic and nothing else — no lesson, no storyboard,
+ * no audio. Their pipeline says exactly that. Claiming stages that were never
+ * run would misrepresent what the app can currently do.
+ */
+function buildSeedPipeline(): ProjectPipeline {
+  const now = new Date().toISOString();
 
   return Object.fromEntries(
-    PIPELINE_STAGES.map((stage, index) => [
+    PIPELINE_STAGES.map((stage) => [
       stage,
-      {
-        status:
-          index < completeThrough
-            ? "complete"
-            : index === completeThrough && status === "in_progress"
-              ? "in_progress"
-              : "pending",
-        updatedAt: index < completeThrough ? new Date().toISOString() : null,
-      },
+      stage === "topic"
+        ? { status: "complete", updatedAt: now }
+        : { status: "pending", updatedAt: null },
     ]),
   ) as ProjectPipeline;
 }

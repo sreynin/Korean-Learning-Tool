@@ -45,7 +45,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 5 | Video Preview | **COMPLETE** |
 | 6 | AI Voice | **COMPLETE** (see caveat) |
 | 7 | Captions | **COMPLETE** |
-| 8 | Video Rendering | NOT STARTED |
+| 8 | Video Rendering | **ARCHITECTURE ONLY** (see caveat) |
 | 9 | YouTube Metadata | NOT STARTED |
 | 10 | Content Library | NOT STARTED |
 | 11 | YouTube Publishing | NOT STARTED |
@@ -57,6 +57,15 @@ and `MockSceneGenerator` were exercised end to end. The Anthropic generators
 are written against the documented SDK API but have never made a real call.
 Model id, structured-output behaviour, real latency, and error mapping are all
 unproven. Set `AI_API_KEY` and generate once before relying on them.
+
+**Step 8 caveat — nothing encodes video yet.** The job model, queue, worker,
+storage, API, and pipeline rule are built and exercised; the renderer behind
+them is `PlaceholderRenderer`, which walks the real progress checkpoints and
+writes a JSON manifest instead of an MP4. Step 8 proper is one file:
+`src/server/render/placeholder-renderer.ts`. Until it lands,
+`STAGE_META.render.implemented` stays `false`, so the UI still says
+"Coming soon" and there is no render button — a render can only be started
+deliberately, through the API or the worker script.
 
 **Step 10 note** — `/projects` already provides a project library with status
 filtering and search (built in Step 1). Whatever else "Content Library" covers
@@ -83,7 +92,7 @@ not an implementation.
 | UI system | Tailwind CSS v4, CSS-first (`@theme inline`), custom primitives in `src/components/ui/` |
 | State management | **No library.** `useState` / `useEffect` + `router.refresh()` |
 | Validation | Zod 4.6.5, on every external boundary |
-| Testing | **None.** No test files, no test runner, no test script |
+| Testing | `node:test` + `tsx`, no extra dependency. `npm test` |
 | Script runner | `tsx` (dev-only), for `scripts/*.ts` |
 
 ### Two data paths (important)
@@ -170,25 +179,36 @@ src/
 │   ├── tts/           text-to-speech-provider.ts (interface),
 │   │                  elevenlabs-provider.ts, mock-provider.ts,
 │   │                  audio-storage.ts, index.ts (provider selection)
+│   ├── render/        renderer.ts (interface), placeholder-renderer.ts,
+│   │                  render-queue.ts (RenderQueue + runRenderJob),
+│   │                  render-storage.ts, index.ts (composition point)
 │   ├── services/      project-service.ts, lesson-service.ts,
-│   │                  scene-service.ts, voice-service.ts
+│   │                  scene-service.ts, voice-service.ts,
+│   │                  caption-service.ts, pipeline-service.ts,
+│   │                  render-service.ts
 │   ├── db/            client.ts (PrismaClient + driver adapter)
 │   ├── repositories/  project-repository.ts (interface),
 │   │                  prisma-project-repository.ts, project-mapper.ts,
 │   │                  normalize-project.ts, seed-data.ts,
+│   │                  render-job-repository.ts,
 │   │                  index.ts (composition point)
 │   ├── validation/    project-schemas.ts
 │   ├── errors.ts      AppError hierarchy
 │   └── http.ts        route() wrapper, parseJsonBody()
 │
-└── types/  project.ts, lesson.ts, scene.ts, voice.ts, caption.ts, api.ts
+└── types/  project.ts, lesson.ts, scene.ts, voice.ts, caption.ts,
+            render.ts, api.ts
 
 prisma/schema.prisma          database schema
 prisma/migrations/            versioned migrations (committed)
 prisma.config.ts              Prisma CLI config (datasource URL)
 scripts/import-json-store.ts  legacy JSON -> database import
 scripts/seed-database.ts      sample library seeder
+scripts/repair-pipeline.ts    recompute stored stage status
+scripts/render-worker.ts      drains render jobs from a separate process
+tests/                        node:test suites + helpers/
 data/korean-learning-lab.db   SQLite file (gitignored)
+data/renders/                 finished render output (gitignored)
 ```
 
 ### Persistence
@@ -218,6 +238,11 @@ Schema decisions worth knowing before changing it:
   is not unique: a reorder puts two scenes on the same order for one statement.
 - The mapper (`src/server/repositories/project-mapper.ts`) is the only place
   rows become domain objects. The API shape did not change during the move.
+- `RenderJob` is a table because a render outlives the request that starts it.
+  Every write against it is a **single short statement** — create, claim,
+  progress, complete, fail. SQLite takes a write lock per statement, so a
+  render must never happen inside one; `runRenderJob()` holds no transaction
+  while the renderer runs.
 
 | Command | Purpose |
 | --- | --- |
@@ -226,6 +251,9 @@ Schema decisions worth knowing before changing it:
 | `npm run db:studio` | Browse the database |
 | `npm run db:seed` | Insert the sample library (skips if non-empty; `-- --force`) |
 | `npm run db:import` | Import a legacy `data/projects.json` (repeatable; `-- --dry-run`) |
+| `npm run db:repair-pipeline` | Recompute every project's stage status from its real content |
+| `npm run render:worker` | Drain render jobs in a separate process (`-- --watch` to keep polling) |
+| `npm test` | Run the test suite |
 
 ## 5. Data Models
 
@@ -265,9 +293,30 @@ Use them; do not compare format strings inline.
 render, youtube`. `STAGE_META[stage].implemented` gates the UI — `topic`,
 `lesson`, `scenes`, and `preview` are `true`.
 
-`preview` is `implemented` but its per-project stage status is never set to
-`complete`: previewing produces no artifact, so there is nothing to record.
-Do not auto-complete it on a page view.
+**Stage status is derived, never set.** `reconcilePipeline()` in
+`src/server/services/pipeline-service.ts` computes every stage from what the
+project actually contains, and `syncPipeline()` persists it. Nothing else may
+write `pipeline` — four services used to each hold their own idea of
+"complete" and they drifted.
+
+The rules:
+
+- `topic` completes at creation (the topic is the creation input).
+- `lesson`, `scenes` complete when that artifact exists.
+- `voice` is `in_progress` while only some scenes have audio.
+- `captions` completes when settings are **saved** (`captionsConfigured`) and a
+  storyboard exists. Defaults applied for rendering do not count.
+- `preview` completes on an explicit review (`previewReviewedAt`), never on a
+  page view.
+- `render` follows the job, not the button: no job (or only failed ones) is
+  `pending`, an active job is `in_progress`, and a job that produced output is
+  `complete`. Creating a job never completes the stage, and a failed retry
+  cannot erase an earlier render that is still on disk.
+- `assets` and `youtube` are forced to `pending` — they have no
+  implementation, so no stored value may claim otherwise.
+
+Deleting an artifact reverts its stage. Run `npm run db:repair-pipeline` after
+changing these rules to bring existing rows in line.
 
 Changing this list is a **data migration**: `normalizeProject()` rebuilds every
 stored `pipeline` against it on read, carrying renamed stages over and
@@ -396,6 +445,11 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | PUT | `/api/projects/[id]/caption-settings` | Save caption presentation settings |
 | POST·DELETE | `/api/projects/[id]/scenes/[sceneId]/audio` | Generate / remove narration |
 | GET | `/api/audio/[fileName]` | Serve a generated clip |
+| POST | `/api/projects/[id]/renders` | Create a render job and return immediately |
+| GET | `/api/projects/[id]/renders` | List a project's render jobs |
+| GET | `/api/projects/[id]/renders/[jobId]` | Poll one job's status and progress |
+| GET | `/api/renders/[fileName]` | Serve a finished render |
+| PUT | `/api/projects/[id]/preview-review` | Record that the preview was reviewed |
 
 **`GET /api/projects`** — query `status`, `format`, `search`; validated by
 `projectListFiltersSchema`. Returns `VideoProject[]`, newest-updated first.
@@ -554,8 +608,11 @@ npm run build       # next build
 npm run dev         # next dev, port 3000
 ```
 
-**There is no test command.** No test runner, no test files. Do not claim tests
-passed. If a change needs a test, propose adding the tooling.
+`npm test` runs `node:test` via `tsx` over `tests/**/*.test.ts`. Each test file
+migrates its own temporary SQLite database, so tests exercise the real schema
+and never touch `data/`. The suite is deliberately small — persistence,
+derived stage status, and the data-loss guard. Add to it when a change could
+silently destroy stored work.
 
 `npm run typecheck` depends on route types Next generates during a build — run
 `npm run build` or `npm run dev` at least once after cloning.
@@ -575,7 +632,7 @@ Step 4  — Scene Generator        → COMPLETE  (live API path unverified)
 Step 5  — Video Preview          → COMPLETE
 Step 6  — AI Voice               → COMPLETE (live provider unverified)
 Step 7  — Captions               → COMPLETE
-Step 8  — Video Rendering        → NEXT
+Step 8  — Video Rendering        → NEXT (job architecture done, encoder not)
 Step 9  — YouTube Metadata       → PLANNED
 Step 10 — Content Library        → PLANNED
 Step 11 — YouTube Publishing     → PLANNED
@@ -595,27 +652,32 @@ trade-offs that now have an expiry date.
    machine, which is the current situation. It is not suitable for concurrent
    users or a serverless deployment; moving to Postgres is a Prisma provider
    change plus regenerated migrations.
-4. **Generation runs inside the HTTP request** (`maxDuration = 300`). Workable
-   for lessons, unworkable for voice synthesis and rendering. A job queue is
-   needed before Steps 6 and 8.
-5. **No tests anywhere.** Pure, easily-testable business rules — duration
-   reconciliation, `"both"` stat counting, quiz answer reconciliation, the
-   v1→v2 store migration — are all unverified by automation.
-6. **Dead code.** `api.projects.list/get/update`, `api.stats.get`, and
+4. **Lesson, scene, and voice generation still run inside the HTTP request**
+   (`maxDuration = 300`). Rendering no longer does — it goes through the render
+   job — but the generators have not been moved onto the same mechanism.
+5. **The render queue is in-process.** `InProcessRenderQueue` runs a job after
+   the request returns, in the app's own process: work in flight is lost if the
+   process exits, and it does not span instances. `scripts/render-worker.ts`
+   proves the job row is the only coupling, and replacing the queue is one new
+   `RenderQueue` implementation.
+6. **Tests cover persistence, stage rules, and the render lifecycle only.**
+   Duration reconciliation, `"both"` stat counting, and quiz answer
+   reconciliation are still unverified by automation.
+7. **Dead code.** `api.projects.list/get/update`, `api.stats.get`, and
    `api.lessons.generate` have no callers. `/api/stats` and `/api/health` have
    no in-app consumers.
-7. **The server-only boundary is convention, not enforcement.** There is no
+8. **The server-only boundary is convention, not enforcement.** There is no
    `server-only` package guard. A stray import of `src/server/**` from a client
    component would pull secrets into the browser bundle. Currently clean —
    verified that `process.env.AI_API_KEY` appears nowhere in client chunks.
-8. **Schema asymmetry.** `lessonSchema` accepts empty strings; `lessonEditSchema`
+9. **Schema asymmetry.** `lessonSchema` accepts empty strings; `lessonEditSchema`
    rejects them. A sparse generation can save-fail until the user fills it in.
-9. **Orphan env var** — `NEXT_PUBLIC_APP_URL` is in `.env.example` but is not
+10. **Orphan env var** — `NEXT_PUBLIC_APP_URL` is in `.env.example` but is not
     in the `env.ts` schema and is referenced nowhere.
-10. **`saveLesson`'s `model` argument is ignored when `edited: true`** — the
+11. **`saveLesson`'s `model` argument is ignored when `edited: true`** — the
     route passes `"manual"`, the service preserves the original. Harmless,
     confusing.
-11. **Dashboard stat overlap.** A `"both"` project counts toward both the
+12. **Dashboard stat overlap.** A `"both"` project counts toward both the
     Shorts and Long Videos tiles, so they intentionally do not sum to
     "Videos Created".
 

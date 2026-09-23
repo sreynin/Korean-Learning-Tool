@@ -13,7 +13,10 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed-database.ts",
-    "db:import": "tsx scripts/import-json-store.ts"
+    "db:import": "tsx scripts/import-json-store.ts",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "db:repair-pipeline": "tsx scripts/repair-pipeline.ts",
+    "render:worker": "tsx scripts/render-worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

@@ -2,6 +2,7 @@ import { getLessonGenerator } from "@/server/ai";
 import { getProjectRepository } from "@/server/repositories";
 import { NotFoundError } from "@/server/errors";
 import { getProject } from "@/server/services/project-service";
+import { syncPipeline } from "@/server/services/pipeline-service";
 import type { GeneratedLesson } from "@/server/ai/lesson-generator";
 import type { Lesson, LessonGenerationRequest, StoredLesson } from "@/types/lesson";
 import type { VideoProject } from "@/types/project";
@@ -60,15 +61,13 @@ export async function saveLesson(
     lesson: stored,
     // A project with a lesson is no longer an untouched draft.
     status: existing.status === "draft" ? "in_progress" : existing.status,
-    pipeline: {
-      ...existing.pipeline,
-      lesson: { status: "complete", updatedAt: now },
-    },
     updatedAt: now,
   });
 
   if (!updated) {
     throw new NotFoundError(`No project found with id "${projectId}".`);
   }
-  return updated;
+
+  // Stage status is derived, never set here.
+  return syncPipeline(updated);
 }

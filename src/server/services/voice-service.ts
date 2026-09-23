@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getProjectRepository } from "@/server/repositories";
 import { sceneAudioRepository } from "@/server/repositories/scene-audio-repository";
 import { getProject } from "@/server/services/project-service";
+import { syncPipeline } from "@/server/services/pipeline-service";
 import { deleteAudioFile, writeAudioFile } from "@/server/tts/audio-storage";
 import { getTextToSpeechProvider } from "@/server/tts";
 import type { VideoProject } from "@/types/project";
@@ -67,7 +68,7 @@ export async function generateSceneAudio(
     await deleteAudioFile(replaced);
   }
 
-  return syncVoiceStage(projectId);
+  return syncPipeline(await getProject(projectId));
 }
 
 export async function deleteSceneAudio(
@@ -86,7 +87,7 @@ export async function deleteSceneAudio(
     await deleteAudioFile(removed);
   }
 
-  return syncVoiceStage(projectId);
+  return syncPipeline(await getProject(projectId));
 }
 
 export async function updateVoiceSettings(
@@ -112,37 +113,4 @@ export async function updateVoiceSettings(
     throw new NotFoundError(`No project found with id "${projectId}".`);
   }
   return updated;
-}
-
-/**
- * The voice stage is complete only when every scene has audio. Anything less
- * is partial work, and reporting it as done would be a lie the render stage
- * would then trip over.
- */
-async function syncVoiceStage(projectId: string): Promise<VideoProject> {
-  const project = await getProject(projectId);
-  const scenes = project.scenes?.scenes ?? [];
-
-  const withAudio = scenes.filter((scene) => scene.audio !== null).length;
-  const status =
-    scenes.length > 0 && withAudio === scenes.length
-      ? "complete"
-      : withAudio > 0
-        ? "in_progress"
-        : "pending";
-
-  if (project.pipeline.voice.status === status) return project;
-
-  const updated = await getProjectRepository().update(projectId, {
-    pipeline: {
-      ...project.pipeline,
-      voice: {
-        status,
-        updatedAt: status === "pending" ? null : new Date().toISOString(),
-      },
-    },
-    updatedAt: new Date().toISOString(),
-  });
-
-  return updated ?? project;
 }

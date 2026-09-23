@@ -2,6 +2,7 @@ import type { StoredLesson } from "@/types/lesson";
 import type { StoredScenes } from "@/types/scene";
 import type { VoiceSettings } from "@/types/voice";
 import type { CaptionSettings } from "@/types/caption";
+import type { RenderJob } from "@/types/render";
 
 /**
  * Domain model for a Korean-learning video project.
@@ -111,8 +112,16 @@ export interface VideoProject {
   scenes: StoredScenes | null;
   /** Narration voice configuration for this project. */
   voiceSettings: VoiceSettings;
-  /** How captions are drawn on the frame. */
+  /** How captions are drawn on the frame. Defaults until explicitly saved. */
   captionSettings: CaptionSettings;
+  /** True once the creator has saved caption settings at least once. */
+  captionsConfigured: boolean;
+  /** ISO 8601 of the preview review, or null if never reviewed. */
+  previewReviewedAt: string | null;
+  /** Most recent render job, or null if none has been started. */
+  latestRender: RenderJob | null;
+  /** True once any render has completed with an output file. */
+  hasRenderOutput: boolean;
   pipeline: ProjectPipeline;
   /** ISO 8601 */
   createdAt: string;

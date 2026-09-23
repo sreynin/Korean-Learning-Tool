@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError } from "@/server/errors";
 import { getSceneGenerator } from "@/server/ai";
 import { getProjectRepository } from "@/server/repositories";
 import { getProject } from "@/server/services/project-service";
+import { syncPipeline } from "@/server/services/pipeline-service";
 import { producesShorts } from "@/types/project";
 import type { VideoProject } from "@/types/project";
 import type { GeneratedScene, Scene, StoredScenes } from "@/types/scene";
@@ -83,17 +84,14 @@ export async function saveScenes(
   const updated = await getProjectRepository().update(projectId, {
     scenes: stored,
     status: existing.status === "draft" ? "in_progress" : existing.status,
-    pipeline: {
-      ...existing.pipeline,
-      scenes: { status: "complete", updatedAt: now },
-    },
     updatedAt: now,
   });
 
   if (!updated) {
     throw new NotFoundError(`No project found with id "${projectId}".`);
   }
-  return updated;
+
+  return syncPipeline(updated);
 }
 
 /** Assigns the ids and ordering the model deliberately does not produce. */

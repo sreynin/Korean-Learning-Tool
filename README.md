@@ -52,6 +52,13 @@ YouTube API. These stages are
 modelled in the data and shown read-only in the project editor so progress is
 visible as each one is built.
 
+Rendering has its architecture but not its renderer: `POST
+/api/projects/:id/renders` creates a persistent job and returns immediately, a
+queue runs it outside the request, and the job carries status, progress, an
+error message, and an output reference. The renderer behind it is a
+placeholder that writes a manifest instead of a video, so there is no render
+button in the UI yet.
+
 Without an `AI_API_KEY` the app falls back to a mock generator that returns
 clearly-labelled placeholder lessons, so the whole flow works before you have
 credentials.
@@ -82,7 +89,8 @@ npm run dev
 Open <http://localhost:3000>.
 
 `db:seed` inserts 24 example projects so the dashboard is not empty; it does
-nothing if the database already has data. If you are coming from the old JSON
+nothing if the database already has data. They are seeded as drafts with only
+the topic stage complete, because that is all they actually contain. If you are coming from the old JSON
 store, run `npm run db:import` instead — it reads `data/projects.json` and is
 safe to run more than once.
 
@@ -100,6 +108,9 @@ safe to run more than once.
 | `npm run db:seed` | Insert the sample library (`-- --force` to overwrite) |
 | `npm run db:import` | Import a legacy `data/projects.json` (`-- --dry-run` first) |
 | `npm run db:studio` | Browse the database |
+| `npm run db:repair-pipeline` | Recompute stage status from real content (`-- --dry-run`) |
+| `npm run render:worker` | Drain render jobs in a separate process (`-- --watch`) |
+| `npm test` | Run the test suite |
 
 `npm run typecheck` depends on route types that Next generates during a build.
 Run `npm run build` (or `npm run dev`) at least once after cloning.
@@ -227,6 +238,10 @@ All responses use the envelope described above.
 | `PUT` | `/api/projects/:id/caption-settings` | Save caption presentation settings |
 | `POST` | `/api/projects/:id/scenes` | Build a storyboard from the saved lesson and save |
 | `PUT` | `/api/projects/:id/scenes` | Save an edited storyboard |
+| `POST` | `/api/projects/:id/renders` | Create a render job and return immediately |
+| `GET` | `/api/projects/:id/renders` | List a project's render jobs |
+| `GET` | `/api/projects/:id/renders/:jobId` | Poll one job's status and progress |
+| `GET` | `/api/renders/:fileName` | Serve a finished render |
 
 ```bash
 curl -X POST localhost:3000/api/projects -H 'Content-Type: application/json' -d '{"topic":"Korean Numbers 1-10","format":"shorts","level":"beginner","targetLanguage":"korean","contentStyle":"vocabulary","visualStyle":"clean_educational","shortsDurationSeconds":30}'
@@ -272,12 +287,11 @@ Primitives live in `src/components/ui/`: `Button`, `Card`, `Badge`, `Alert`,
 
 ## What to build next
 
-1. **Replace the JSON store with a real database.** Lessons are now stored on
-   every project, so the single JSON file is rewritten in full on each save.
-   This is the next thing that breaks.
-2. **Script generation** from the saved lesson — the next pipeline stage, and
-   the one that turns a lesson into narration with timings.
-3. **Background jobs.** Generation already runs long enough to be awkward in a
-   request; voice synthesis and rendering will not fit at all. A queue plus
-   progress reporting replaces the current in-request approach.
+1. **The renderer itself.** Everything around it exists — job, queue, worker,
+   progress, storage, stage rule. Replacing `PlaceholderRenderer` with an
+   FFmpeg implementation is the remaining work.
+2. **Asset generation** for each scene, so a render has imagery to compose.
+3. **Move generation onto the job mechanism.** Lesson, scene, and voice
+   generation still run inside the request; the render job shows the shape
+   they should take.
 4. **Authentication**, once there is more than one user.

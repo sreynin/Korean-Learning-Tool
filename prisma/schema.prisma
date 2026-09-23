@@ -43,14 +43,19 @@ model Project {
   /// JSON: VoiceSettings — language, voice, speed, pitch, volume.
   voiceSettings String?
 
-  /// JSON: CaptionSettings — size, position, alignment, animation, visibility.
+  /// JSON: CaptionSettings. Null means the creator has never configured them,
+  /// which is what makes the captions stage derivable rather than assumed.
   captionSettings String?
+
+  /// Set when the creator marks the preview reviewed. Null means not reviewed.
+  previewReviewedAt DateTime?
 
   createdAt DateTime
   updatedAt DateTime
 
-  lesson     Lesson?
-  storyboard Storyboard?
+  lesson      Lesson?
+  storyboard  Storyboard?
+  renderJobs  RenderJob[]
 
   @@index([updatedAt])
   @@index([status])
@@ -145,4 +150,31 @@ model SceneAudio {
   /// "elevenlabs" or "mock".
   provider    String
   generatedAt DateTime
+}
+
+/// A single attempt to render a project into a video file.
+///
+/// The row is the source of truth for job state, which is what lets the worker
+/// run outside the HTTP request — and later, in a separate process entirely.
+model RenderJob {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// pending | queued | processing | completed | failed
+  status String @default("pending")
+  /// 0-100.
+  progress Int @default(0)
+
+  /// Why the job failed. Null while it has not.
+  errorMessage String?
+  /// File name inside the render directory. Null until a render succeeds.
+  outputFileName String?
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([projectId, createdAt])
+  @@index([status])
 }

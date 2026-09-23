@@ -35,6 +35,10 @@ export function normalizeProject(raw: VideoProject): VideoProject {
     lesson: project.lesson ?? null,
     scenes: project.scenes ?? null,
     captionSettings: project.captionSettings ?? DEFAULT_CAPTION_SETTINGS,
+    captionsConfigured: project.captionsConfigured ?? false,
+    previewReviewedAt: project.previewReviewedAt ?? null,
+    latestRender: project.latestRender ?? null,
+    hasRenderOutput: project.hasRenderOutput ?? false,
     voiceSettings:
       project.voiceSettings ??
       defaultVoiceSettings(project.targetLanguage === "korean" ? "korean" : "english"),

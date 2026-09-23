@@ -66,6 +66,10 @@ export async function createProject(
     lesson: null,
     scenes: null,
     captionSettings: DEFAULT_CAPTION_SETTINGS,
+    captionsConfigured: false,
+    previewReviewedAt: null,
+    latestRender: null,
+    hasRenderOutput: false,
     voiceSettings: defaultVoiceSettings(
       input.targetLanguage === "korean" ? "korean" : "english",
     ),

@@ -1,10 +1,12 @@
 import type {
   Lesson,
   Project,
+  RenderJob as RenderJobRow,
   Scene,
   SceneAudio as SceneAudioRow,
   Storyboard,
 } from "@prisma/client";
+import { toDomain as toRenderJob } from "@/server/repositories/render-job-repository";
 import { normalizePipeline } from "@/server/repositories/normalize-project";
 import type { LessonSection, QuizQuestion, StoredLesson } from "@/types/lesson";
 import type {
@@ -34,6 +36,7 @@ export type SceneRow = Scene & { audio: SceneAudioRow | null };
 export type ProjectRow = Project & {
   lesson: Lesson | null;
   storyboard: (Storyboard & { scenes: SceneRow[] }) | null;
+  renderJobs: RenderJobRow[];
 };
 
 /**
@@ -64,6 +67,14 @@ export function toDomain(row: ProjectRow): VideoProject {
       ...DEFAULT_CAPTION_SETTINGS,
       ...parseJson<Partial<CaptionSettings>>(row.captionSettings ?? "", {}),
     },
+    // The raw column is null until the creator saves, which is what makes the
+    // captions stage derivable rather than assumed.
+    captionsConfigured: row.captionSettings !== null,
+    previewReviewedAt: row.previewReviewedAt?.toISOString() ?? null,
+    latestRender: row.renderJobs[0] ? toRenderJob(row.renderJobs[0]) : null,
+    hasRenderOutput: row.renderJobs.some(
+      (job) => job.status === "completed" && job.outputFileName !== null,
+    ),
     pipeline: normalizePipeline(parseJson(row.pipeline, {})),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -175,7 +186,13 @@ export function toProjectColumns(project: VideoProject) {
     longDurationSeconds: project.longDurationSeconds,
     pipeline: JSON.stringify(project.pipeline),
     voiceSettings: JSON.stringify(project.voiceSettings),
-    captionSettings: JSON.stringify(project.captionSettings),
+    // Only persist settings once configured, so the null stays meaningful.
+    captionSettings: project.captionsConfigured
+      ? JSON.stringify(project.captionSettings)
+      : null,
+    previewReviewedAt: project.previewReviewedAt
+      ? new Date(project.previewReviewedAt)
+      : null,
     createdAt: new Date(project.createdAt),
     updatedAt: new Date(project.updatedAt),
   };

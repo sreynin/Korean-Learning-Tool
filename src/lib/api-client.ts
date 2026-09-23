@@ -3,6 +3,7 @@ import type { Lesson, LessonGenerationRequest } from "@/types/lesson";
 import type { Scene } from "@/types/scene";
 import type { VoiceLanguage, VoiceOption, VoiceSettings } from "@/types/voice";
 import type { CaptionSettings } from "@/types/caption";
+import type { RenderJob } from "@/types/render";
 import type {
   CreateProjectInput,
   ProjectListFilters,
@@ -175,6 +176,29 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(settings),
       }),
+  },
+
+  preview: {
+    setReviewed: (projectId: string, reviewed: boolean) =>
+      request<VideoProject>(`/projects/${projectId}/preview-review`, {
+        method: "PUT",
+        body: JSON.stringify({ reviewed }),
+      }),
+  },
+
+  renders: {
+    /** Creates a job and returns immediately — never waits for the render. */
+    start: (projectId: string) =>
+      request<{ job: RenderJob; project: VideoProject }>(
+        `/projects/${projectId}/renders`,
+        { method: "POST" },
+      ),
+
+    list: (projectId: string) =>
+      request<RenderJob[]>(`/projects/${projectId}/renders`),
+
+    get: (projectId: string, jobId: string) =>
+      request<RenderJob>(`/projects/${projectId}/renders/${jobId}`),
   },
 
   stats: {

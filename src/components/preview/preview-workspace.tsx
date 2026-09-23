@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ApiClientError, api } from "@/lib/api-client";
 import { PlaybackControls } from "@/components/preview/playback-controls";
 import { PreviewTimeline } from "@/components/preview/preview-timeline";
 import { SceneProperties } from "@/components/preview/scene-properties";
 import { SceneStage } from "@/components/preview/scene-stage";
 import { useScenePlayback } from "@/components/preview/use-scene-playback";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SCENE_TYPE_META } from "@/lib/constants";
 import { PREVIEW_FORMATS, previewFormatsFor } from "@/lib/preview";
@@ -20,6 +22,9 @@ export function PreviewWorkspace({ project }: { project: VideoProject }) {
   const availableFormats = previewFormatsFor(project.format);
 
   const [format, setFormat] = useState<PreviewFormat>(availableFormats[0]);
+  const [reviewedAt, setReviewedAt] = useState(project.previewReviewedAt);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const playback = useScenePlayback(scenes);
   const current: Scene | null = scenes[playback.index] ?? null;
 
@@ -53,6 +58,24 @@ export function PreviewWorkspace({ project }: { project: VideoProject }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [toggle, next, previous]);
+
+  async function toggleReviewed() {
+    setReviewBusy(true);
+    setReviewError(null);
+
+    try {
+      const updated = await api.preview.setReviewed(project.id, !reviewedAt);
+      setReviewedAt(updated.previewReviewedAt);
+    } catch (cause) {
+      setReviewError(
+        cause instanceof ApiClientError
+          ? cause.message
+          : "Could not update the review status.",
+      );
+    } finally {
+      setReviewBusy(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -162,6 +185,21 @@ export function PreviewWorkspace({ project }: { project: VideoProject }) {
               Space to play or pause · arrow keys to step scenes. Backgrounds are
               placeholders until the assets stage is built.
             </p>
+
+            {/* The preview stage completes on this explicit action. Opening the
+                page is not evidence that anything was reviewed. */}
+            <div className="flex flex-col items-center gap-2 border-t border-border-subtle pt-4">
+              <Button
+                variant={reviewedAt ? "secondary" : "primary"}
+                loading={reviewBusy}
+                onClick={toggleReviewed}
+              >
+                {reviewedAt ? "Reviewed — undo" : "Mark preview as reviewed"}
+              </Button>
+              {reviewError ? (
+                <p className="text-xs text-danger">{reviewError}</p>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
 

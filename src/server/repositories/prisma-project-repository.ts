@@ -14,6 +14,8 @@ import type { ProjectListFilters, VideoProject } from "@/types/project";
 const INCLUDE_RELATIONS = {
   lesson: true,
   storyboard: { include: { scenes: { include: { audio: true } } } },
+  // Newest first, so the mapper can take the latest without another query.
+  renderJobs: { orderBy: { createdAt: "desc" } },
 } as const;
 
 /**
