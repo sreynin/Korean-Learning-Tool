@@ -23,6 +23,8 @@ import type {
   StoredScenes,
 } from "@/types/scene";
 import { defaultVoiceSettings } from "@/types/voice";
+import { DEFAULT_CAPTION_SETTINGS } from "@/types/caption";
+import type { CaptionSettings } from "@/types/caption";
 import type { SceneAudio, VoiceLanguage, VoiceSettings } from "@/types/voice";
 import type { LongDuration, ShortsDuration } from "@/types/project";
 
@@ -58,6 +60,10 @@ export function toDomain(row: ProjectRow): VideoProject {
     lesson: row.lesson ? toStoredLesson(row.lesson) : null,
     scenes: row.storyboard ? toStoredScenes(row.storyboard) : null,
     voiceSettings: toVoiceSettings(row.voiceSettings, row.targetLanguage),
+    captionSettings: {
+      ...DEFAULT_CAPTION_SETTINGS,
+      ...parseJson<Partial<CaptionSettings>>(row.captionSettings ?? "", {}),
+    },
     pipeline: normalizePipeline(parseJson(row.pipeline, {})),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -98,6 +104,7 @@ function toStoredScenes(row: Storyboard & { scenes: SceneRow[] }): StoredScenes 
         animation: scene.animation as SceneAnimation,
         background: scene.background,
         transition: scene.transition as SceneTransition,
+        highlightTerms: parseJson<string[]>(scene.highlightTerms ?? "", []),
         audio: scene.audio ? toSceneAudio(scene.audio) : null,
       })),
     generatedAt: row.generatedAt.toISOString(),
@@ -168,6 +175,7 @@ export function toProjectColumns(project: VideoProject) {
     longDurationSeconds: project.longDurationSeconds,
     pipeline: JSON.stringify(project.pipeline),
     voiceSettings: JSON.stringify(project.voiceSettings),
+    captionSettings: JSON.stringify(project.captionSettings),
     createdAt: new Date(project.createdAt),
     updatedAt: new Date(project.updatedAt),
   };
@@ -210,6 +218,7 @@ export function toSceneColumns(scene: StoredScenes["scenes"][number]) {
     animation: scene.animation,
     background: scene.background,
     transition: scene.transition,
+    highlightTerms: JSON.stringify(scene.highlightTerms ?? []),
   };
 }
 

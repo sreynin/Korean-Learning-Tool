@@ -140,6 +140,7 @@ export function PreviewWorkspace({ project }: { project: VideoProject }) {
                 scene={current}
                 sceneElapsed={playback.sceneElapsed}
                 format={format}
+                captions={project.captionSettings}
               />
             </div>
 

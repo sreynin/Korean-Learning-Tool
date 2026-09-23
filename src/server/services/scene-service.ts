@@ -102,7 +102,8 @@ function withIdentity(scenes: GeneratedScene[]): Scene[] {
     ...scene,
     id: randomUUID(),
     order: index + 1,
-    // Narration audio is generated later, by the voice stage.
+    // Highlights and audio are added later, by the caption and voice stages.
+    highlightTerms: [],
     audio: null,
   }));
 }

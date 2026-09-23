@@ -58,6 +58,12 @@ export const sceneEditSchema = z.object({
   animation: z.enum(SCENE_ANIMATIONS),
   background: z.string().trim().max(300),
   transition: z.enum(SCENE_TRANSITIONS),
+  // Substrings of koreanText to highlight. Absent on older clients, so it
+  // defaults rather than rejecting the save.
+  highlightTerms: z
+    .array(z.string().trim().min(1).max(100))
+    .max(20, "A scene can highlight at most 20 terms.")
+    .default([]),
 });
 
 export const storyboardEditSchema = z.object({

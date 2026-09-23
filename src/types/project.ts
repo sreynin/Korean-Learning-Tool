@@ -1,6 +1,7 @@
 import type { StoredLesson } from "@/types/lesson";
 import type { StoredScenes } from "@/types/scene";
 import type { VoiceSettings } from "@/types/voice";
+import type { CaptionSettings } from "@/types/caption";
 
 /**
  * Domain model for a Korean-learning video project.
@@ -110,6 +111,8 @@ export interface VideoProject {
   scenes: StoredScenes | null;
   /** Narration voice configuration for this project. */
   voiceSettings: VoiceSettings;
+  /** How captions are drawn on the frame. */
+  captionSettings: CaptionSettings;
   pipeline: ProjectPipeline;
   /** ISO 8601 */
   createdAt: string;

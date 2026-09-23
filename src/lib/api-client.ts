@@ -2,6 +2,7 @@ import type { ApiErrorCode, ApiResponse, FieldIssue } from "@/types/api";
 import type { Lesson, LessonGenerationRequest } from "@/types/lesson";
 import type { Scene } from "@/types/scene";
 import type { VoiceLanguage, VoiceOption, VoiceSettings } from "@/types/voice";
+import type { CaptionSettings } from "@/types/caption";
 import type {
   CreateProjectInput,
   ProjectListFilters,
@@ -165,6 +166,14 @@ export const api = {
     remove: (projectId: string, sceneId: string) =>
       request<VideoProject>(`/projects/${projectId}/scenes/${sceneId}/audio`, {
         method: "DELETE",
+      }),
+  },
+
+  captions: {
+    saveSettings: (projectId: string, settings: CaptionSettings) =>
+      request<VideoProject>(`/projects/${projectId}/caption-settings`, {
+        method: "PUT",
+        body: JSON.stringify(settings),
       }),
   },
 

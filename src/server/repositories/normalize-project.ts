@@ -6,6 +6,7 @@ import {
   producesShorts,
 } from "@/types/project";
 import { defaultVoiceSettings } from "@/types/voice";
+import { DEFAULT_CAPTION_SETTINGS } from "@/types/caption";
 import type {
   PipelineStage,
   ProjectPipeline,
@@ -33,6 +34,7 @@ export function normalizeProject(raw: VideoProject): VideoProject {
     visualStyle: project.visualStyle ?? "clean_educational",
     lesson: project.lesson ?? null,
     scenes: project.scenes ?? null,
+    captionSettings: project.captionSettings ?? DEFAULT_CAPTION_SETTINGS,
     voiceSettings:
       project.voiceSettings ??
       defaultVoiceSettings(project.targetLanguage === "korean" ? "korean" : "english"),

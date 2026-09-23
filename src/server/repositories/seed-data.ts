@@ -1,4 +1,5 @@
 import { defaultVoiceSettings } from "@/types/voice";
+import { DEFAULT_CAPTION_SETTINGS } from "@/types/caption";
 import {
   CONTENT_STYLES,
   PIPELINE_STAGES,
@@ -249,6 +250,7 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       lesson: null,
       scenes: null,
       voiceSettings: defaultVoiceSettings("korean"),
+      captionSettings: DEFAULT_CAPTION_SETTINGS,
       pipeline: buildPipelineFor(spec.status),
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),

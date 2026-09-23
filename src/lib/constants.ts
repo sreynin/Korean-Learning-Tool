@@ -188,8 +188,9 @@ export const STAGE_META: Record<
   },
   captions: {
     label: "Captions",
-    description: "Burned-in captions and romanisation.",
-    implemented: false,
+    description:
+      "On-screen Korean, romanization, and translation, with highlighted vocabulary.",
+    implemented: true,
   },
   preview: {
     label: "Preview",

@@ -14,7 +14,12 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 6 — narration generation.** What works today:
+**Step 7 — captions.** What works today:
+
+- **On-screen Korean, romanization, and translation** with configurable size,
+  position, alignment, animation, and per-layer visibility — plus per-scene
+  vocabulary highlighting, shown live in the video preview
+
 
 - **Per-scene voice generation** with language, voice, speed, pitch and volume
   settings — play, regenerate, and delete each clip. Audio files live under
@@ -42,8 +47,8 @@ script, written by the scene generator and consumed by the voice stage.
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** asset generation, caption rendering, final
-rendering, and the YouTube API. These stages are
+**Not implemented yet:** asset generation, final MP4 rendering, and the
+YouTube API. These stages are
 modelled in the data and shown read-only in the project editor so progress is
 visible as each one is built.
 
@@ -219,6 +224,7 @@ All responses use the envelope described above.
 | `POST` | `/api/lessons/generate` | Generate a lesson without saving it |
 | `POST` | `/api/projects/:id/lesson` | Generate from the project's config and save |
 | `PUT` | `/api/projects/:id/lesson` | Save an edited lesson |
+| `PUT` | `/api/projects/:id/caption-settings` | Save caption presentation settings |
 | `POST` | `/api/projects/:id/scenes` | Build a storyboard from the saved lesson and save |
 | `PUT` | `/api/projects/:id/scenes` | Save an edited storyboard |
 

@@ -28,7 +28,7 @@ topic → lesson → scenes → assets → voice → captions → preview → re
 ```
 
 All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`,
-`scenes`, `voice`, and `preview` are implemented.
+`scenes`, `voice`, `captions`, and `preview` are implemented.
 
 **There is deliberately no "script" stage.** A scene's `narration` field *is*
 the spoken script — the scene generator produces it and the future voice stage
@@ -44,7 +44,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 4 | Scene Generator | **COMPLETE** (see caveat) |
 | 5 | Video Preview | **COMPLETE** |
 | 6 | AI Voice | **COMPLETE** (see caveat) |
-| 7 | Captions | NOT STARTED |
+| 7 | Captions | **COMPLETE** |
 | 8 | Video Rendering | NOT STARTED |
 | 9 | YouTube Metadata | NOT STARTED |
 | 10 | Content Library | NOT STARTED |
@@ -139,6 +139,7 @@ src/
 │   ├── lesson/    lesson-panel, lesson-view, lesson-editor
 │   ├── scenes/    scene-panel, scene-card
 │   ├── voice/     voice-settings-panel, scene-audio-controls
+│   ├── captions/  caption-settings-panel
 │   ├── preview/   preview-workspace, scene-stage, playback-controls,
 │   │              preview-timeline, scene-properties, use-scene-playback
 │   ├── projects/  project-card, project-grid, project-filters,
@@ -180,7 +181,7 @@ src/
 │   ├── errors.ts      AppError hierarchy
 │   └── http.ts        route() wrapper, parseJsonBody()
 │
-└── types/  project.ts, lesson.ts, scene.ts, api.ts
+└── types/  project.ts, lesson.ts, scene.ts, voice.ts, caption.ts, api.ts
 
 prisma/schema.prisma          database schema
 prisma/migrations/            versioned migrations (committed)
@@ -313,6 +314,21 @@ interface StoredLesson {
 }
 ```
 
+### Captions — `src/types/caption.ts`
+
+**Captions are not separate text.** They are how a scene's existing
+`koreanText`, `romanization`, and `englishText` are drawn on the frame.
+Duplicating the strings would let the subtitle and the storyboard drift apart,
+so `CaptionSettings` governs the same fields the preview already reads.
+
+- `CaptionSettings` lives on the **project** (one consistent look): font size,
+  position, alignment, animation, and per-layer visibility.
+- `highlightTerms` lives on the **scene** — substrings of `koreanText` to
+  emphasise, e.g. `["김치"]` renders 저는 [김치]를 좋아해요.
+- `segmentCaption()` is the single splitter both the preview and any future
+  renderer consume. Longer terms match first so an overlapping shorter term
+  cannot claim part of a longer one.
+
 ### Scene — `src/types/scene.ts`
 
 Storyboard fields are **camelCase**, unlike `Lesson`. That matches the rest of
@@ -377,6 +393,7 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | PUT | `/api/projects/[id]/scenes` | Save an edited storyboard |
 | GET | `/api/voices` | Available voices + provider capabilities |
 | PUT | `/api/projects/[id]/voice-settings` | Save project voice settings |
+| PUT | `/api/projects/[id]/caption-settings` | Save caption presentation settings |
 | POST·DELETE | `/api/projects/[id]/scenes/[sceneId]/audio` | Generate / remove narration |
 | GET | `/api/audio/[fileName]` | Serve a generated clip |
 
@@ -557,8 +574,8 @@ Step 3  — AI Lesson Generator    → COMPLETE  (live API path unverified)
 Step 4  — Scene Generator        → COMPLETE  (live API path unverified)
 Step 5  — Video Preview          → COMPLETE
 Step 6  — AI Voice               → COMPLETE (live provider unverified)
-Step 7  — Captions               → NEXT
-Step 8  — Video Rendering        → PLANNED
+Step 7  — Captions               → COMPLETE
+Step 8  — Video Rendering        → NEXT
 Step 9  — YouTube Metadata       → PLANNED
 Step 10 — Content Library        → PLANNED
 Step 11 — YouTube Publishing     → PLANNED

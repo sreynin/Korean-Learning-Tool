@@ -10,6 +10,7 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
+import { segmentCaption } from "@/types/caption";
 import {
   MAX_SCENE_DURATION,
   MIN_SCENE_DURATION,
@@ -276,6 +277,56 @@ export function SceneCard({
               />
             )}
           </Field>
+
+          <Field
+            label="Highlighted vocabulary"
+            hint="Comma-separated parts of the Korean text to emphasise in captions."
+            error={errorKey("highlightTerms")}
+          >
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                lang="ko"
+                placeholder="김치, 좋아해요"
+                value={scene.highlightTerms.join(", ")}
+                disabled={disabled}
+                onChange={(event) =>
+                  onChange({
+                    highlightTerms: event.target.value
+                      .split(",")
+                      .map((term) => term.trim())
+                      .filter((term) => term.length > 0),
+                  })
+                }
+              />
+            )}
+          </Field>
+
+          {scene.koreanText ? (
+            <div className="rounded-lg bg-surface-muted px-3 py-2">
+              <p className="text-[10px] font-semibold tracking-wide text-foreground-muted uppercase">
+                Caption preview
+              </p>
+              <p lang="ko" className="mt-1 text-sm text-foreground">
+                {segmentCaption(scene.koreanText, scene.highlightTerms).map(
+                  (segment, index) => (
+                    <span
+                      key={index}
+                      className={
+                        segment.highlighted
+                          ? "rounded bg-brand px-0.5 text-brand-foreground"
+                          : undefined
+                      }
+                    >
+                      {segment.text}
+                    </span>
+                  ),
+                )}
+              </p>
+            </div>
+          ) : null}
 
           <Field
             label="Visual prompt"

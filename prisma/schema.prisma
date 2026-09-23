@@ -43,6 +43,9 @@ model Project {
   /// JSON: VoiceSettings — language, voice, speed, pitch, volume.
   voiceSettings String?
 
+  /// JSON: CaptionSettings — size, position, alignment, animation, visibility.
+  captionSettings String?
+
   createdAt DateTime
   updatedAt DateTime
 
@@ -106,6 +109,9 @@ model Scene {
   animation    String
   background   String
   transition   String
+
+  /// JSON: string[] — substrings of koreanText to highlight in captions.
+  highlightTerms String?
 
   audio SceneAudio?
 

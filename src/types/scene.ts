@@ -70,6 +70,8 @@ export interface Scene {
   background: string;
   /** How this scene enters from the previous one. */
   transition: SceneTransition;
+  /** Substrings of `koreanText` to highlight in captions. */
+  highlightTerms: string[];
   /** Generated narration audio, or null until it has been generated. */
   audio: SceneAudio | null;
 }
@@ -86,9 +88,15 @@ export interface StoredScenes {
 }
 
 /** What the model returns: `id`, `order`, and `audio` are not its concern. */
-export type GeneratedScene = Omit<Scene, "id" | "order" | "audio">;
+export type GeneratedScene = Omit<
+  Scene,
+  "id" | "order" | "audio" | "highlightTerms"
+>;
 
-export const EMPTY_SCENE: GeneratedScene & { audio: null } = {
+export const EMPTY_SCENE: GeneratedScene & {
+  audio: null;
+  highlightTerms: string[];
+} = {
   type: "vocabulary",
   duration: 4,
   koreanText: "",
@@ -99,6 +107,7 @@ export const EMPTY_SCENE: GeneratedScene & { audio: null } = {
   animation: "fade_in",
   background: "",
   transition: "cut",
+  highlightTerms: [],
   audio: null,
 };
 
