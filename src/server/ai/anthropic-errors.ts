@@ -36,6 +36,19 @@ export function toAppError(error: unknown, what: string): AppError {
     );
   }
 
+  // `AnthropicError` is the SDK's base class and `APIError` extends it, so
+  // reaching here means a non-HTTP SDK failure — in practice, the model's
+  // reply not matching the structured-output schema. That is an upstream
+  // formatting problem, not a fault in this server, so it is a 502.
+  if (error instanceof Anthropic.AnthropicError) {
+    console.error("[ai] structured output error", error.message);
+    return new AppError(
+      "generation_failed",
+      `${what} failed: the model returned a response that did not match the expected format.`,
+      502,
+    );
+  }
+
   console.error("[ai] unexpected generation error", error);
   return new AppError(
     "generation_failed",
