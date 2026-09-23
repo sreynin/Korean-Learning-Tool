@@ -62,6 +62,7 @@ export async function createProject(
       ? (input.longDurationSeconds ?? DEFAULT_LONG_DURATION)
       : null,
     lesson: null,
+    scenes: null,
     pipeline: createInitialPipeline(now),
     createdAt: now,
     updatedAt: now,

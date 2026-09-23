@@ -11,6 +11,11 @@ import type {
   VideoFormat,
   VisualStyle,
 } from "@/types/project";
+import type {
+  SceneAnimation,
+  SceneTransition,
+  SceneType,
+} from "@/types/scene";
 
 export const APP_NAME = "Korean Learning Lab";
 
@@ -104,6 +109,39 @@ export const LONG_DURATION_LABELS: Record<LongDuration, string> = {
   600: "10 minutes",
 };
 
+export const SCENE_TYPE_META: Record<
+  SceneType,
+  { label: string; tone: BadgeTone }
+> = {
+  hook: { label: "Hook", tone: "brand" },
+  vocabulary: { label: "Vocabulary", tone: "info" },
+  grammar: { label: "Grammar", tone: "info" },
+  example: { label: "Example", tone: "accent" },
+  explanation: { label: "Explanation", tone: "accent" },
+  quiz: { label: "Quiz", tone: "warning" },
+  answer: { label: "Answer", tone: "success" },
+  practice: { label: "Practice", tone: "neutral" },
+  outro: { label: "Outro", tone: "brand" },
+};
+
+export const SCENE_ANIMATION_LABELS: Record<SceneAnimation, string> = {
+  none: "None",
+  fade_in: "Fade in",
+  slide_up: "Slide up",
+  slide_left: "Slide left",
+  pop: "Pop",
+  zoom_in: "Zoom in",
+  typewriter: "Typewriter",
+};
+
+export const SCENE_TRANSITION_LABELS: Record<SceneTransition, string> = {
+  cut: "Cut",
+  fade: "Fade",
+  slide: "Slide",
+  zoom: "Zoom",
+  dissolve: "Dissolve",
+};
+
 export const STAGE_STATUS_META: Record<
   StageStatus,
   { label: string; tone: BadgeTone }
@@ -131,24 +169,20 @@ export const STAGE_META: Record<
     description: "Generated vocabulary, grammar points, and examples.",
     implemented: true,
   },
-  script: {
-    label: "Script",
-    description: "Narration written from the lesson plan.",
-    implemented: false,
-  },
   scenes: {
     label: "Scenes",
-    description: "The script split into timed scenes.",
-    implemented: false,
+    description:
+      "The lesson split into a timed, editable storyboard. Each scene's narration is the spoken script.",
+    implemented: true,
   },
-  visuals: {
-    label: "Visuals",
-    description: "Imagery and on-screen text for each scene.",
+  assets: {
+    label: "Assets",
+    description: "Imagery and on-screen text generated for each scene.",
     implemented: false,
   },
   voice: {
     label: "Voice",
-    description: "Synthesised Korean and English narration.",
+    description: "Narration from each scene, synthesised to audio.",
     implemented: false,
   },
   captions: {
@@ -158,11 +192,11 @@ export const STAGE_META: Record<
   },
   preview: {
     label: "Preview",
-    description: "Assembled video for review before export.",
+    description: "Assembled video for review before rendering.",
     implemented: false,
   },
-  export: {
-    label: "Export",
+  render: {
+    label: "Render",
     description: "Final render at the target resolution.",
     implemented: false,
   },

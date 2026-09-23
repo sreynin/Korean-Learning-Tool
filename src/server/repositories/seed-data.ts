@@ -246,6 +246,7 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       shortsDurationSeconds: producesShorts(spec.format) ? 30 : null,
       longDurationSeconds: producesLongForm(spec.format) ? 600 : null,
       lesson: null,
+      scenes: null,
       pipeline: buildPipelineFor(spec.status),
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),

@@ -6,12 +6,20 @@ YouTube Shorts and long-form YouTube.
 The full product workflow is:
 
 ```
-Topic → AI lesson → Script → Scenes → Visuals → Voice → Captions → Preview → Export → YouTube metadata
+Topic → AI lesson → Scenes → Assets → Voice → Captions → Preview → Render → YouTube metadata
 ```
+
+There is no separate script stage: each scene's `narration` field is the spoken
+script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 3 — AI lesson generation.** What works today:
+**Step 4 — the scene generator.** What works today:
+
+- **Turning a lesson into a storyboard** — an ordered list of typed, timed
+  scenes with on-screen text, narration, visual prompts, animation and
+  transitions — then reordering and editing it
+
 
 - Configuring a lesson: topic, level, video type, target language, content
   style, visual style, and per-cut durations
@@ -24,10 +32,10 @@ Topic → AI lesson → Script → Scenes → Visuals → Voice → Captions →
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** script writing, scene planning, visual generation,
-voice synthesis, caption rendering, video export, and the YouTube API. These
-stages are modelled in the data and shown read-only in the project editor so
-progress is visible as each one is built.
+**Not implemented yet:** visual generation, voice synthesis, caption
+rendering, video preview, video export, and the YouTube API. These stages are
+modelled in the data and shown read-only in the project editor so progress is
+visible as each one is built.
 
 Without an `AI_API_KEY` the app falls back to a mock generator that returns
 clearly-labelled placeholder lessons, so the whole flow works before you have
@@ -49,14 +57,19 @@ cp .env.example .env.local
 ```
 
 ```bash
+npm run db:migrate && npm run db:seed
+```
+
+```bash
 npm run dev
 ```
 
 Open <http://localhost:3000>.
 
-On first run the app creates `data/projects.json` and seeds it with 24 example
-projects so the dashboard is not empty. Set `SEED_SAMPLE_DATA=false` in
-`.env.local` to start empty instead, or delete the `data/` directory to reset.
+`db:seed` inserts 24 example projects so the dashboard is not empty; it does
+nothing if the database already has data. If you are coming from the old JSON
+store, run `npm run db:import` instead — it reads `data/projects.json` and is
+safe to run more than once.
 
 ### Scripts
 
@@ -67,6 +80,11 @@ projects so the dashboard is not empty. Set `SEED_SAMPLE_DATA=false` in
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript, no emit |
+| `npm run db:migrate` | Create and apply a migration from schema changes |
+| `npm run db:deploy` | Apply existing migrations (non-interactive) |
+| `npm run db:seed` | Insert the sample library (`-- --force` to overwrite) |
+| `npm run db:import` | Import a legacy `data/projects.json` (`-- --dry-run` first) |
+| `npm run db:studio` | Browse the database |
 
 `npm run typecheck` depends on route types that Next generates during a build.
 Run `npm run build` (or `npm run dev`) at least once after cloning.
@@ -79,8 +97,7 @@ All variables are documented in `.env.example`. They are validated at startup by
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | No | Base URL for absolute links |
-| `DATA_DIR` | No | Where the JSON store is written (default `./data`) |
-| `SEED_SAMPLE_DATA` | No | Seed example projects on first run (default `true`) |
+| `DATABASE_URL` | No | SQLite file path (default `file:./data/korean-learning-lab.db`) |
 | `AI_API_KEY` | No | Anthropic key for lesson generation. Blank falls back to the mock generator |
 | `AI_MODEL` | No | Model used for generation (default `claude-opus-5`) |
 | `ELEVENLABS_API_KEY` | No | Reserved for voice synthesis |
@@ -104,6 +121,7 @@ src/app/api/        HTTP boundary: parses input, maps errors to status codes
 src/components/     UI — ui/ primitives, then feature folders
 src/server/         Business logic. Never imported by client components.
   services/         Business rules and orchestration
+  db/               PrismaClient + driver adapter
   repositories/     Persistence behind an interface
   validation/       Zod schemas, shared by API routes and services
   errors.ts         Typed errors the HTTP layer knows how to translate
@@ -127,16 +145,21 @@ like "Shorts cannot exceed 60 seconds" is enforced once.
 
 ### Storage
 
-`JsonProjectRepository` writes a single JSON file. Reads and writes are
-serialised through a promise queue, and writes land in a temp file that is then
-renamed, so an interrupted write cannot truncate the store. Records from an
-older store version are upgraded on read by `normalize-project.ts`.
+SQLite via Prisma, with four tables — `Project`, `Lesson`, `Storyboard`, and
+`Scene`. Scenes are real rows; a project's pipeline and a lesson's
+sections/quiz are JSON columns, because they are always read as a whole and
+never queried by their inner fields.
 
-This is a deliberate stand-in for a database: it supports one running instance
-and is not suitable for production traffic. Replacing it means writing one new
-implementation of `ProjectRepository` and changing the single line in
-`src/server/repositories/index.ts` that constructs it. Nothing above that line
-changes.
+`PrismaProjectRepository` implements the same `ProjectRepository` interface the
+JSON store did, so the services above it were untouched by the move. Swapping
+to Postgres later is a provider change in `prisma/schema.prisma` plus
+regenerated migrations.
+
+```bash
+npm run db:migrate   # create + apply a migration
+npm run db:seed      # insert the sample library
+npm run db:studio    # browse the data
+```
 
 ### Error handling
 
@@ -184,6 +207,8 @@ All responses use the envelope described above.
 | `POST` | `/api/lessons/generate` | Generate a lesson without saving it |
 | `POST` | `/api/projects/:id/lesson` | Generate from the project's config and save |
 | `PUT` | `/api/projects/:id/lesson` | Save an edited lesson |
+| `POST` | `/api/projects/:id/scenes` | Build a storyboard from the saved lesson and save |
+| `PUT` | `/api/projects/:id/scenes` | Save an edited storyboard |
 
 ```bash
 curl -X POST localhost:3000/api/projects -H 'Content-Type: application/json' -d '{"topic":"Korean Numbers 1-10","format":"shorts","level":"beginner","targetLanguage":"korean","contentStyle":"vocabulary","visualStyle":"clean_educational","shortsDurationSeconds":30}'

@@ -2,17 +2,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { AppError } from "@/server/errors";
 import { stopReasonError, toAppError } from "@/server/ai/anthropic-errors";
-import { lessonSchema, reconcileQuizAnswers } from "@/server/ai/lesson-schema";
-import { LESSON_SYSTEM_PROMPT, buildLessonPrompt } from "@/server/ai/prompt";
+import { generatedStoryboardSchema } from "@/server/ai/scene-schema";
+import { SCENE_SYSTEM_PROMPT, buildScenePrompt } from "@/server/ai/scene-prompt";
+import type { ScenePromptInput } from "@/server/ai/scene-prompt";
 import type {
-  GeneratedLesson,
-  LessonGenerator,
-} from "@/server/ai/lesson-generator";
-import type { LessonGenerationRequest } from "@/types/lesson";
+  GeneratedStoryboard,
+  SceneGenerator,
+} from "@/server/ai/scene-generator";
 
 const MAX_TOKENS = 16000;
 
-export class AnthropicLessonGenerator implements LessonGenerator {
+export class AnthropicSceneGenerator implements SceneGenerator {
   private readonly client: Anthropic;
   private readonly model: string;
 
@@ -21,7 +21,7 @@ export class AnthropicLessonGenerator implements LessonGenerator {
     this.model = options.model;
   }
 
-  async generate(request: LessonGenerationRequest): Promise<GeneratedLesson> {
+  async generate(input: ScenePromptInput): Promise<GeneratedStoryboard> {
     let response;
 
     try {
@@ -32,30 +32,38 @@ export class AnthropicLessonGenerator implements LessonGenerator {
         system: [
           {
             type: "text",
-            text: LESSON_SYSTEM_PROMPT,
+            text: SCENE_SYSTEM_PROMPT,
             cache_control: { type: "ephemeral" },
           },
         ],
-        messages: [{ role: "user", content: buildLessonPrompt(request) }],
-        output_config: { format: zodOutputFormat(lessonSchema) },
+        messages: [{ role: "user", content: buildScenePrompt(input) }],
+        output_config: { format: zodOutputFormat(generatedStoryboardSchema) },
       });
     } catch (error) {
-      throw toAppError(error, "Lesson generation");
+      throw toAppError(error, "Scene generation");
     }
 
-    const stopError = stopReasonError(response.stop_reason, "lesson");
+    const stopError = stopReasonError(response.stop_reason, "storyboard");
     if (stopError) throw stopError;
 
     if (!response.parsed_output) {
       throw new AppError(
         "generation_failed",
-        "The model returned a lesson that did not match the expected format.",
+        "The model returned a storyboard that did not match the expected format.",
+        502,
+      );
+    }
+
+    if (response.parsed_output.scenes.length === 0) {
+      throw new AppError(
+        "generation_failed",
+        "The model returned an empty storyboard. Try regenerating.",
         502,
       );
     }
 
     return {
-      lesson: reconcileQuizAnswers(response.parsed_output),
+      scenes: response.parsed_output.scenes,
       model: response.model ?? this.model,
     };
   }

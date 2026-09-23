@@ -29,9 +29,9 @@ interface GenerationStep {
 const GENERATION_STEPS: GenerationStep[] = [
   { label: "Topic analyzed" },
   { label: "Lesson structure created" },
-  { label: "Generating script", blockedReason: "Not implemented yet" },
-  { label: "Creating scenes", blockedReason: "Needs the script" },
-  { label: "Preparing video", blockedReason: "Needs scenes, visuals, and voice" },
+  { label: "Creating scenes", blockedReason: "Open the project to generate" },
+  { label: "Generating assets", blockedReason: "Needs the storyboard" },
+  { label: "Preparing video", blockedReason: "Needs assets, voice, and captions" },
 ];
 
 /**
@@ -134,8 +134,8 @@ export function GenerationProgress({
 
         {finished ? (
           <Alert tone="info" className="mt-5">
-            The lesson is ready to review and edit. Script, scenes, and video are
-            not implemented yet, so generation stops here.
+            The lesson is ready to review and edit. Open the project to build
+            its storyboard; assets, voice, and video are not implemented yet.
           </Alert>
         ) : null}
       </CardContent>

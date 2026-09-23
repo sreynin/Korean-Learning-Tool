@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { LessonPanel } from "@/components/lesson/lesson-panel";
+import { ScenePanel } from "@/components/scenes/scene-panel";
 import { DeleteProjectButton } from "@/components/projects/delete-project-button";
 import { PipelineList } from "@/components/projects/pipeline-list";
 import { Alert } from "@/components/ui/alert";
@@ -24,6 +25,7 @@ import {
 } from "@/lib/utils/project";
 import { isAppError } from "@/server/errors";
 import { getProject } from "@/server/services/project-service";
+import { storyboardTargetSeconds } from "@/server/services/scene-service";
 import type { VideoProject } from "@/types/project";
 
 export async function generateMetadata({
@@ -68,12 +70,16 @@ export default async function ProjectEditorPage({
       </div>
 
       <Alert tone="info" className="mb-6">
-        Lesson generation is available. Script, visuals, voice, captions, and
-        export are not implemented yet.
+        Lesson and storyboard generation are available. Assets, voice,
+        captions, and rendering are not implemented yet.
       </Alert>
 
-      <div className="mb-6">
+      <div className="mb-6 flex flex-col gap-6">
         <LessonPanel project={project} />
+        <ScenePanel
+          project={project}
+          targetDurationSeconds={storyboardTargetSeconds(project)}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">

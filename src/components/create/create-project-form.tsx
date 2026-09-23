@@ -165,8 +165,8 @@ export function CreateProjectForm({
   return (
     <form onSubmit={handleSubmit} noValidate>
       <Alert tone="info" className="mb-6">
-        Generating the lesson takes a moment. Script, visuals, voice, and video
-        generation are not connected yet.
+        Generating the lesson takes a moment. Assets, voice, captions, and
+        rendering are not connected yet.
       </Alert>
 
       <Card>

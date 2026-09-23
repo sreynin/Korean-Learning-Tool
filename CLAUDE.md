@@ -24,11 +24,15 @@ do not add learner-facing features (progress tracking, SRS, streaks).
 The intended production pipeline is:
 
 ```
-topic → lesson → script → scenes → visuals → voice → captions → preview → export → youtube
+topic → lesson → scenes → assets → voice → captions → preview → render → youtube
 ```
 
-All ten stages exist as data in `PIPELINE_STAGES`. Only `topic` and `lesson`
-are implemented.
+All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`, and
+`scenes` are implemented.
+
+**There is deliberately no "script" stage.** A scene's `narration` field *is*
+the spoken script — the scene generator produces it and the future voice stage
+consumes it. Do not reintroduce a separate script stage.
 
 ## 2. Current Status
 
@@ -37,8 +41,8 @@ are implemented.
 | 1 | Project setup | **COMPLETE** |
 | 2 | Create Video workflow | **COMPLETE** |
 | 3 | AI Lesson Generator | **COMPLETE** (see caveat) |
-| 4 | Scene Generator | **NOT STARTED** |
-| 5 | Video Preview | NOT STARTED |
+| 4 | Scene Generator | **COMPLETE** (see caveat) |
+| 5 | Video Preview | **NOT STARTED** |
 | 6 | AI Voice | NOT STARTED |
 | 7 | Captions | NOT STARTED |
 | 8 | Video Rendering | NOT STARTED |
@@ -47,12 +51,12 @@ are implemented.
 | 11 | YouTube Publishing | NOT STARTED |
 | 12 | Production Readiness | NOT STARTED |
 
-**Step 3 caveat — the live AI path has never been executed.** No `AI_API_KEY`
-was available during development, so only `MockLessonGenerator` was exercised
-end to end. `AnthropicLessonGenerator` is written against the documented SDK
-API but has never made a real call. Model id, structured-output behaviour, real
-latency, and error mapping are all unproven. Set `AI_API_KEY` and generate once
-before relying on it.
+**Steps 3 and 4 caveat — the live AI path has never been executed.** No
+`AI_API_KEY` was available during development, so only `MockLessonGenerator`
+and `MockSceneGenerator` were exercised end to end. The Anthropic generators
+are written against the documented SDK API but have never made a real call.
+Model id, structured-output behaviour, real latency, and error mapping are all
+unproven. Set `AI_API_KEY` and generate once before relying on them.
 
 **Step 10 note** — `/projects` already provides a project library with status
 filtering and search (built in Step 1). Whatever else "Content Library" covers
@@ -71,14 +75,15 @@ Declaring a variable is not an implementation.
 | Language | TypeScript 5, `strict: true`, path alias `@/*` → `src/*` |
 | Frontend | React Server Components by default; 10 `"use client"` components |
 | Backend | Next.js route handlers under `src/app/api/`, thin HTTP boundary only |
-| Database | **None** |
-| ORM | **None** |
-| Storage | JSON file at `data/projects.json` (store `version: 2`), behind a repository interface |
+| Database | **SQLite** at `data/korean-learning-lab.db` |
+| ORM | **Prisma 7.10.0** with the `better-sqlite3` driver adapter |
+| Storage | Tables `Project` / `Lesson` / `Storyboard` / `Scene`, behind the `ProjectRepository` interface |
 | AI provider | Anthropic via `@anthropic-ai/sdk` 0.128.0 |
 | UI system | Tailwind CSS v4, CSS-first (`@theme inline`), custom primitives in `src/components/ui/` |
 | State management | **No library.** `useState` / `useEffect` + `router.refresh()` |
 | Validation | Zod 4.6.5, on every external boundary |
 | Testing | **None.** No test files, no test runner, no test script |
+| Script runner | `tsx` (dev-only), for `scripts/*.ts` |
 
 ### Two data paths (important)
 
@@ -116,7 +121,8 @@ src/
 │   │       ├── route.ts
 │   │       └── [id]/
 │   │           ├── route.ts
-│   │           └── lesson/route.ts
+│   │           ├── lesson/route.ts
+│   │           └── scenes/route.ts
 │   ├── page.tsx                 dashboard (force-dynamic)
 │   ├── create/page.tsx
 │   ├── projects/page.tsx, [id]/page.tsx
@@ -130,6 +136,7 @@ src/
 │   ├── layout/    app-shell, sidebar-nav, page-header
 │   ├── create/    create-workflow, create-project-form, generation-progress
 │   ├── lesson/    lesson-panel, lesson-view, lesson-editor
+│   ├── scenes/    scene-panel, scene-card
 │   ├── projects/  project-card, project-grid, project-filters,
 │   │              pipeline-list, delete-project-button
 │   └── dashboard/ stats-grid, project-section
@@ -147,19 +154,65 @@ src/
 │   │   ├── mock-lesson-generator.ts
 │   │   ├── lesson-schema.ts             output + edit schemas
 │   │   ├── prompt.ts                    ALL teaching rules live here
+│   │   ├── scene-generator.ts           the SceneGenerator interface
+│   │   ├── anthropic-scene-generator.ts
+│   │   ├── mock-scene-generator.ts
+│   │   ├── scene-schema.ts              output + edit schemas
+│   │   ├── scene-prompt.ts              ALL storyboard rules live here
+│   │   ├── anthropic-errors.ts          shared SDK error mapping
 │   │   └── index.ts                     provider selection
-│   ├── services/      project-service.ts, lesson-service.ts
+│   ├── services/      project-service.ts, lesson-service.ts,
+│   │                  scene-service.ts
+│   ├── db/            client.ts (PrismaClient + driver adapter)
 │   ├── repositories/  project-repository.ts (interface),
-│   │                  json-project-repository.ts, normalize-project.ts,
-│   │                  seed-data.ts, index.ts (composition point)
+│   │                  prisma-project-repository.ts, project-mapper.ts,
+│   │                  normalize-project.ts, seed-data.ts,
+│   │                  index.ts (composition point)
 │   ├── validation/    project-schemas.ts
 │   ├── errors.ts      AppError hierarchy
 │   └── http.ts        route() wrapper, parseJsonBody()
 │
-└── types/  project.ts, lesson.ts, api.ts
+└── types/  project.ts, lesson.ts, scene.ts, api.ts
 
-data/projects.json   local store (gitignored)
+prisma/schema.prisma          database schema
+prisma/migrations/            versioned migrations (committed)
+prisma.config.ts              Prisma CLI config (datasource URL)
+scripts/import-json-store.ts  legacy JSON -> database import
+scripts/seed-database.ts      sample library seeder
+data/korean-learning-lab.db   SQLite file (gitignored)
 ```
+
+### Persistence
+
+Prisma 7 no longer takes a URL in `schema.prisma`. The connection lives in two
+places that must stay in step:
+
+- `prisma.config.ts` — for the CLI (`migrate`, `studio`). It loads `.env.local`
+  itself, because the Prisma CLI does not.
+- `src/server/db/client.ts` — builds `PrismaClient` with the
+  `PrismaBetterSqlite3` driver adapter.
+
+`DATABASE_URL` is a `file:` path resolved against the **project root** by both.
+
+Schema decisions worth knowing before changing it:
+
+- Enum-like columns are `String`. SQLite has no native enum, and the
+  authoritative lists already live in `src/types/*` enforced by Zod. Do not
+  duplicate them into the schema.
+- `Project.pipeline`, `Lesson.sections`, and `Lesson.quiz` are JSON text. They
+  are always read whole and never queried by inner fields.
+- `Scene` **is** a table — scenes are ordered, individually edited, and will
+  carry media references later.
+- The mapper (`src/server/repositories/project-mapper.ts`) is the only place
+  rows become domain objects. The API shape did not change during the move.
+
+| Command | Purpose |
+| --- | --- |
+| `npm run db:migrate` | Create + apply a migration from schema changes |
+| `npm run db:deploy` | Apply existing migrations (non-interactive) |
+| `npm run db:studio` | Browse the database |
+| `npm run db:seed` | Insert the sample library (skips if non-empty; `-- --force`) |
+| `npm run db:import` | Import a legacy `data/projects.json` (repeatable; `-- --dry-run`) |
 
 ## 5. Data Models
 
@@ -182,6 +235,7 @@ interface VideoProject {
   shortsDurationSeconds: 15 | 30 | 60 | null;      // null unless format produces a Short
   longDurationSeconds: 180 | 300 | 600 | null;     // null unless format produces a long cut
   lesson: StoredLesson | null;
+  scenes: StoredScenes | null;
   pipeline: Record<PipelineStage, { status: StageStatus; updatedAt: string | null }>;
   createdAt: string;             // ISO 8601
   updatedAt: string;             // ISO 8601
@@ -194,9 +248,14 @@ and the type, `*_META` in `constants.ts`, and the Zod schema all follow.
 `producesShorts(format)` / `producesLongForm(format)` encode the `"both"` rule.
 Use them; do not compare format strings inline.
 
-`PIPELINE_STAGES` = `topic, lesson, script, scenes, visuals, voice, captions,
-preview, export, youtube`. `STAGE_META[stage].implemented` gates the UI — only
-`topic` and `lesson` are `true`.
+`PIPELINE_STAGES` = `topic, lesson, scenes, assets, voice, captions, preview,
+render, youtube`. `STAGE_META[stage].implemented` gates the UI — `topic`,
+`lesson`, and `scenes` are `true`.
+
+Changing this list is a **data migration**: `normalizeProject()` rebuilds every
+stored `pipeline` against it on read, carrying renamed stages over and
+defaulting anything missing to pending. Bump `STORE_VERSION` when you change
+it.
 
 ### Lesson — `src/types/lesson.ts`
 
@@ -238,6 +297,41 @@ interface StoredLesson {
 }
 ```
 
+### Scene — `src/types/scene.ts`
+
+Storyboard fields are **camelCase**, unlike `Lesson`. That matches the rest of
+the codebase; the lesson is the exception, not this.
+
+```ts
+interface Scene {
+  id: string;                  // assigned server-side, never by the model
+  order: number;               // 1-based; renumbered from array order on save
+  type: SceneType;             // hook | vocabulary | grammar | example | explanation
+                               // | quiz | answer | practice | outro
+  duration: number;            // seconds, 1–60
+  koreanText: string;          // on-screen text; "" when the scene has none
+  englishText: string;
+  romanization: string;
+  narration: string;           // what the voice-over says — never the same as on-screen text
+  visualPrompt: string;        // image-generation prompt
+  animation: SceneAnimation;   // none | fade_in | slide_up | slide_left | pop
+                               // | zoom_in | typewriter
+  background: string;
+  transition: SceneTransition; // cut | fade | slide | zoom | dissolve
+}
+
+interface StoredScenes {
+  scenes: Scene[];
+  generatedAt: string;
+  model: string;
+  editedAt: string | null;
+}
+```
+
+`animation` and `transition` are **enums rather than free text** so a renderer
+can map each value to a real effect. Free-form strings would be
+unimplementable in Step 8.
+
 ## 6. API Endpoints
 
 Every response uses the envelope in `src/types/api.ts`:
@@ -263,6 +357,8 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | POST | `/api/lessons/generate` | Generate a lesson **without saving** |
 | POST | `/api/projects/[id]/lesson` | Generate from the project's config **and save** |
 | PUT | `/api/projects/[id]/lesson` | Save an edited lesson |
+| POST | `/api/projects/[id]/scenes` | Build a storyboard from the saved lesson **and save** |
+| PUT | `/api/projects/[id]/scenes` | Save an edited storyboard |
 
 **`GET /api/projects`** — query `status`, `format`, `search`; validated by
 `projectListFiltersSchema`. Returns `VideoProject[]`, newest-updated first.
@@ -292,17 +388,33 @@ via `toGenerationRequest()`. Saves the lesson, sets `pipeline.lesson` to
 `lessonEditSchema` (non-empty required fields, ≥1 section, ≥2 options per
 question). Preserves the original `generatedAt`/`model` and sets `editedAt`.
 
+**`POST /api/projects/[id]/scenes`** — no body; reads the project's lesson,
+format, visual style, and target duration. **409 `conflict` when the project
+has no lesson** — the storyboard is built from it. Assigns `id` and `order`
+server-side, sets `pipeline.scenes` to `complete`, moves `status`
+`draft → in_progress`. `maxDuration = 300`.
+
+**`PUT /api/projects/[id]/scenes`** — body `{ scenes: Scene[] }`, validated by
+`storyboardEditSchema` (1–120 scenes, narration required, duration 1–60).
+`order` is renumbered from array position, so reordering is just array order.
+Preserves the original `generatedAt`/`model` and sets `editedAt`.
+
 All handlers are wrapped by `route()` in `src/server/http.ts`, which maps
 `AppError` subclasses to their status and converts anything else into a 500
 with no stack leaked to the client.
 
 ## 7. AI Architecture
 
-**Provider selection** — `src/server/ai/index.ts` returns
-`AnthropicLessonGenerator` when `AI_API_KEY` is set, otherwise
-`MockLessonGenerator`. Cached on `globalThis` to survive hot reloads. Both
-implement the `LessonGenerator` interface, which is the only thing services
-depend on.
+**Provider selection** — `src/server/ai/index.ts` exposes
+`getLessonGenerator()` and `getSceneGenerator()`. Each returns the Anthropic
+implementation when `AI_API_KEY` is set, otherwise the mock. Cached on
+`globalThis` to survive hot reloads. Services depend only on the
+`LessonGenerator` / `SceneGenerator` interfaces.
+
+**Two generators, one pattern.** Lessons are generated from the project's
+configuration; storyboards are generated from the saved **lesson**. Both share
+`src/server/ai/anthropic-errors.ts` (`toAppError`, `stopReasonError`) — add
+error cases there, not in a provider.
 
 **Prompt structure** — all in `src/server/ai/prompt.ts`:
 
@@ -315,8 +427,14 @@ depend on.
   explanations. Long/both: 6–10 sections + 4–6 questions, 2–3 sentences.
 - `CONTENT_STYLE_GUIDANCE` — what a section means for each of the 8 styles.
 
-**Teaching quality changes belong in `prompt.ts`**, never in the provider, the
-service, or the route.
+`src/server/ai/scene-prompt.ts` is the equivalent for storyboards: 8 rules
+covering lesson coverage, one-idea-per-scene, required hook/outro and
+quiz→answer pairing, the on-screen-text vs narration split, narration pacing
+(~3 English words or 2 Korean syllables per second), an exact duration budget,
+and visual-prompt style per `visualStyle`.
+
+**Quality changes belong in `prompt.ts` / `scene-prompt.ts`**, never in a
+provider, a service, or a route.
 
 **Structured output** — `client.messages.parse()` with
 `zodOutputFormat(lessonSchema)`. The response is schema-validated by the API,
@@ -349,18 +467,18 @@ is not overridden. Retries are **manual** in the UI: a "Retry" button in
 4. **No unnecessary dependencies.** There is no state library, no ORM, no UI
    kit, no test runner — on purpose. Adding one is a decision to raise, not to
    make silently.
-5. **Reuse existing components and services.** `src/components/ui/` has
+4. **Reuse existing components and services.** `src/components/ui/` has
    `Button`, `Card`, `Badge`, `Alert`, `Progress`, `Spinner`, `Skeleton`,
    `EmptyState`, `ErrorState`, and `field.tsx` (`Field`, `FieldSet`, `Input`,
    `Textarea`, `Select`, `OptionGroup`). Use them.
-6. **Keep secrets server-side.** Keys are read only in `src/lib/env.ts` and
+5. **Keep secrets server-side.** Keys are read only in `src/lib/env.ts` and
    `src/server/ai/**`. Never import either from a client component. Never
    prefix a secret with `NEXT_PUBLIC_`.
-7. **Validate external and AI data.** Everything crossing a boundary — request
+6. **Validate external and AI data.** Everything crossing a boundary — request
    bodies, query params, model output, stored records — goes through Zod.
-8. **Strict TypeScript.** No `any`, no non-null assertions to silence the
+7. **Strict TypeScript.** No `any`, no non-null assertions to silence the
    compiler, no `@ts-ignore`.
-9. **Test your changes.** Run the verification commands in §10 and exercise the
+8. **Test your changes.** Run the verification commands in §10 and exercise the
    feature in a browser before reporting it done.
 
 ### Project-specific invariants
@@ -416,8 +534,8 @@ explicitly rather than implying success.
 Step 1  — Project setup          → COMPLETE
 Step 2  — Create Video workflow  → COMPLETE
 Step 3  — AI Lesson Generator    → COMPLETE  (live API path unverified)
-Step 4  — Scene Generator        → NEXT
-Step 5  — Video Preview          → PLANNED
+Step 4  — Scene Generator        → COMPLETE  (live API path unverified)
+Step 5  — Video Preview          → NEXT
 Step 6  — AI Voice               → PLANNED
 Step 7  — Captions               → PLANNED
 Step 8  — Video Rendering        → PLANNED
@@ -435,10 +553,11 @@ trade-offs that now have an expiry date.
 1. **All work is uncommitted.** Git holds exactly one commit
    (`Initial commit from Create Next App`). Steps 1–3 exist only in the working
    tree. This is the highest-risk issue in the repository.
-2. **Step 3's live AI path has never executed.** See §2.
-3. **The JSON store is at its limit.** Every save rewrites the entire file, and
-   lessons now live inside it. Single running instance only. **Replace it with
-   a real database before Step 4 adds scene data.**
+2. **The live AI path has never executed** for either generator. See §2.
+3. **SQLite is single-writer and local-file.** Fine for one creator on one
+   machine, which is the current situation. It is not suitable for concurrent
+   users or a serverless deployment; moving to Postgres is a Prisma provider
+   change plus regenerated migrations.
 4. **Generation runs inside the HTTP request** (`maxDuration = 300`). Workable
    for lessons, unworkable for voice synthesis and rendering. A job queue is
    needed before Steps 6 and 8.
@@ -454,14 +573,12 @@ trade-offs that now have an expiry date.
    verified that `process.env.AI_API_KEY` appears nowhere in client chunks.
 8. **Schema asymmetry.** `lessonSchema` accepts empty strings; `lessonEditSchema`
    rejects them. A sparse generation can save-fail until the user fills it in.
-9. **Stale comment** — `src/types/project.ts:10` still says "Only `topic` is
-   implemented today". `lesson` is implemented too.
-10. **Orphan env var** — `NEXT_PUBLIC_APP_URL` is in `.env.example` but is not
+9. **Orphan env var** — `NEXT_PUBLIC_APP_URL` is in `.env.example` but is not
     in the `env.ts` schema and is referenced nowhere.
-11. **`saveLesson`'s `model` argument is ignored when `edited: true`** — the
+10. **`saveLesson`'s `model` argument is ignored when `edited: true`** — the
     route passes `"manual"`, the service preserves the original. Harmless,
     confusing.
-12. **Dashboard stat overlap.** A `"both"` project counts toward both the
+11. **Dashboard stat overlap.** A `"both"` project counts toward both the
     Shorts and Long Videos tiles, so they intentionally do not sum to
     "Videos Created".
 

@@ -23,9 +23,11 @@ See `README.md` for the full architecture. The rules that are easy to break:
   `AppError` subclass rather than returning an ad-hoc error shape.
 - Colours come from the tokens in `src/app/globals.css`. No hardcoded hex values
   in components.
-- Pipeline stages beyond `topic` and `lesson` are not implemented. Keep them
-  read-only until their feature is actually built, and never mark a stage
-  complete for work that did not happen.
+- Pipeline stages beyond `topic`, `lesson`, and `scenes` are not implemented.
+  Keep them read-only until their feature is actually built, and never mark a
+  stage complete for work that did not happen.
+- There is deliberately no `script` pipeline stage — a scene's `narration` is
+  the spoken script. Do not reintroduce one.
 - AI keys live in `src/lib/env.ts` and are read only under `src/server/ai/**`.
   Never import either from a client component.
 - Lesson prompt quality lives in `src/server/ai/prompt.ts`. Change teaching

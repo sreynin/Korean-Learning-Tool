@@ -1,13 +1,11 @@
-import { getServerEnv } from "@/lib/env";
-import { JsonProjectRepository } from "@/server/repositories/json-project-repository";
+import { PrismaProjectRepository } from "@/server/repositories/prisma-project-repository";
 import type { ProjectRepository } from "@/server/repositories/project-repository";
 
 /**
- * Single composition point for storage. Swap the implementation here when a
- * real database replaces the JSON file store — nothing above this line changes.
+ * Single composition point for storage. Swapping databases means writing one
+ * new implementation of `ProjectRepository` and changing the line below.
  *
- * The instance is cached on `globalThis` so Next.js hot reloads in development
- * do not create a second repository with its own write queue.
+ * Cached on `globalThis` so Next.js hot reloads reuse the same instance.
  */
 const globalForRepositories = globalThis as unknown as {
   __projectRepository?: ProjectRepository;
@@ -15,11 +13,7 @@ const globalForRepositories = globalThis as unknown as {
 
 export function getProjectRepository(): ProjectRepository {
   if (!globalForRepositories.__projectRepository) {
-    const env = getServerEnv();
-    globalForRepositories.__projectRepository = new JsonProjectRepository({
-      dataDir: env.DATA_DIR,
-      seedOnCreate: env.SEED_SAMPLE_DATA,
-    });
+    globalForRepositories.__projectRepository = new PrismaProjectRepository();
   }
   return globalForRepositories.__projectRepository;
 }

@@ -1,14 +1,19 @@
 import type { StoredLesson } from "@/types/lesson";
+import type { StoredScenes } from "@/types/scene";
 
 /**
  * Domain model for a Korean-learning video project.
  *
  * A project moves through the production pipeline:
- *   topic → lesson → script → scenes → visuals → voice → captions →
- *   preview → export → youtube
+ *   topic → lesson → scenes → assets → voice → captions → preview →
+ *   render → youtube
  *
- * Only `topic` is implemented today. The remaining stages are modelled so the
- * UI can show real progress as each one is built.
+ * `topic`, `lesson`, and `scenes` are implemented. The remaining stages are
+ * modelled so the UI can show real progress as each one is built.
+ *
+ * There is deliberately no separate "script" stage: a scene's `narration`
+ * field is the spoken script, produced by the scene generator and consumed by
+ * the future voice stage.
  */
 
 /** "both" produces a Shorts cut and a long-form cut from one lesson. */
@@ -61,13 +66,12 @@ export type LongDuration = (typeof LONG_DURATION_OPTIONS)[number];
 export const PIPELINE_STAGES = [
   "topic",
   "lesson",
-  "script",
   "scenes",
-  "visuals",
+  "assets",
   "voice",
   "captions",
   "preview",
-  "export",
+  "render",
   "youtube",
 ] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
@@ -101,6 +105,8 @@ export interface VideoProject {
   longDurationSeconds: LongDuration | null;
   /** The generated lesson, or null until one has been generated. */
   lesson: StoredLesson | null;
+  /** The storyboard built from the lesson, or null until generated. */
+  scenes: StoredScenes | null;
   pipeline: ProjectPipeline;
   /** ISO 8601 */
   createdAt: string;

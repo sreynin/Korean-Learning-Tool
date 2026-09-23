@@ -1,0 +1,109 @@
+// Korean Learning Lab persistence.
+//
+// Design notes:
+//  - Enum-like columns (format, status, level, scene type, animation, …) are
+//    stored as String. SQLite has no native enum, and the authoritative lists
+//    already live in src/types/* and are enforced by Zod at every boundary.
+//    Duplicating them here would create a second source of truth.
+//  - Deeply nested, always-read-together values (a project's pipeline, a
+//    lesson's sections and quiz) are stored as JSON text. They are never
+//    queried by their inner fields, so tables would add joins for no gain.
+//  - Scenes ARE their own table: they are ordered, individually edited, and
+//    will carry media references later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: the connection URL lives in prisma.config.ts (for the CLI) and is
+// passed to PrismaClient via a driver adapter (see src/server/db/client.ts).
+datasource db {
+  provider = "sqlite"
+}
+
+model Project {
+  id          String @id
+  title       String
+  topic       String
+  description String @default("")
+
+  format         String // shorts | long | both
+  status         String // draft | in_progress | completed
+  level          String // beginner | elementary | intermediate | advanced
+  targetLanguage String // korean | english | chinese
+  contentStyle   String
+  visualStyle    String
+
+  shortsDurationSeconds Int?
+  longDurationSeconds   Int?
+
+  /// JSON: Record<PipelineStage, { status, updatedAt }>
+  pipeline String
+
+  createdAt DateTime
+  updatedAt DateTime
+
+  lesson     Lesson?
+  storyboard Storyboard?
+
+  @@index([updatedAt])
+  @@index([status])
+  @@index([format])
+}
+
+model Lesson {
+  id        String  @id @default(uuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title             String
+  hook              String
+  learningObjective String
+  level             String
+  language          String
+
+  /// JSON: LessonSection[]
+  sections String
+  /// JSON: QuizQuestion[]
+  quiz     String
+
+  generatedAt DateTime
+  /// Model id that produced it, or "mock".
+  model       String
+  editedAt    DateTime?
+}
+
+model Storyboard {
+  id        String  @id @default(uuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  generatedAt DateTime
+  model       String
+  editedAt    DateTime?
+
+  scenes Scene[]
+}
+
+model Scene {
+  id           String     @id
+  storyboardId String
+  storyboard   Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+
+  /// 1-based position. Renumbered from array order on every save.
+  order Int
+
+  type         String
+  duration     Int
+  koreanText   String
+  englishText  String
+  romanization String
+  narration    String
+  visualPrompt String
+  animation    String
+  background   String
+  transition   String
+
+  @@unique([storyboardId, order])
+  @@index([storyboardId])
+}

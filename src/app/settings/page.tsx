@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { getFeatureAvailability, getServerEnv } from "@/lib/env";
+import { listProjects } from "@/server/services/project-service";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const env = getServerEnv();
   const features = getFeatureAvailability();
+  const projectCount = (await listProjects()).length;
 
   const integrations = [
     {
@@ -90,18 +92,16 @@ export default async function SettingsPage() {
           <CardTitle>Storage</CardTitle>
           <dl className="mt-4 flex flex-col gap-3 text-sm">
             <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-foreground-muted">Data directory</dt>
-              <dd className="font-mono text-foreground">{env.DATA_DIR}</dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-4">
               <dt className="text-foreground-muted">Backend</dt>
-              <dd className="font-medium text-foreground">JSON file store</dd>
+              <dd className="font-medium text-foreground">SQLite via Prisma</dd>
             </div>
             <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-foreground-muted">Sample data on first run</dt>
-              <dd className="font-medium text-foreground">
-                {env.SEED_SAMPLE_DATA ? "Enabled" : "Disabled"}
-              </dd>
+              <dt className="text-foreground-muted">Database file</dt>
+              <dd className="font-mono text-foreground">{env.DATABASE_URL}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-foreground-muted">Projects stored</dt>
+              <dd className="font-medium text-foreground">{projectCount}</dd>
             </div>
           </dl>
         </CardContent>

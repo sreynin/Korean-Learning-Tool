@@ -8,11 +8,10 @@ const serverEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
-  DATA_DIR: z.string().min(1).default("./data"),
-  SEED_SAMPLE_DATA: z
-    .enum(["true", "false"])
-    .default("true")
-    .transform((value) => value === "true"),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .default("file:./data/korean-learning-lab.db"),
 
   // Lesson generation. Optional on purpose: without a key the app falls back
   // to the mock generator instead of failing to boot.
@@ -34,8 +33,7 @@ export function getServerEnv(): ServerEnv {
 
   const parsed = serverEnvSchema.safeParse({
     NODE_ENV: process.env.NODE_ENV,
-    DATA_DIR: process.env.DATA_DIR,
-    SEED_SAMPLE_DATA: process.env.SEED_SAMPLE_DATA,
+    DATABASE_URL: emptyToUndefined(process.env.DATABASE_URL),
     AI_API_KEY: emptyToUndefined(process.env.AI_API_KEY),
     AI_MODEL: emptyToUndefined(process.env.AI_MODEL),
     ELEVENLABS_API_KEY: emptyToUndefined(process.env.ELEVENLABS_API_KEY),

@@ -1,5 +1,6 @@
 import type { ApiErrorCode, ApiResponse, FieldIssue } from "@/types/api";
 import type { Lesson, LessonGenerationRequest } from "@/types/lesson";
+import type { Scene } from "@/types/scene";
 import type {
   CreateProjectInput,
   ProjectListFilters,
@@ -126,6 +127,18 @@ export const api = {
       request<VideoProject>(`/projects/${projectId}/lesson`, {
         method: "PUT",
         body: JSON.stringify(lesson),
+      }),
+  },
+
+  scenes: {
+    /** Builds a storyboard from the project's saved lesson and saves it. */
+    generateForProject: (projectId: string) =>
+      request<VideoProject>(`/projects/${projectId}/scenes`, { method: "POST" }),
+
+    save: (projectId: string, scenes: Scene[]) =>
+      request<VideoProject>(`/projects/${projectId}/scenes`, {
+        method: "PUT",
+        body: JSON.stringify({ scenes }),
       }),
   },
 
