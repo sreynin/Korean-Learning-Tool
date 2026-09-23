@@ -1,6 +1,5 @@
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, unlink } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 /**
  * Finished renders live on disk beside the audio clips, under `data/`, which
@@ -9,27 +8,48 @@ import { randomUUID } from "node:crypto";
  */
 const RENDER_DIRECTORY = path.resolve(process.cwd(), "data", "renders");
 
-export async function writeRenderFile(
-  bytes: Uint8Array,
-  extension: string,
-): Promise<string> {
-  await mkdir(RENDER_DIRECTORY, { recursive: true });
-
-  const fileName = `${randomUUID()}.${extension}`;
-  const target = path.join(RENDER_DIRECTORY, fileName);
-
-  // Write then rename, so a crash mid-write cannot leave a truncated file that
-  // the render route would serve as if it were finished.
-  const temporary = `${target}.${process.pid}.tmp`;
-  await writeFile(temporary, bytes);
-  await rename(temporary, target);
-
-  return fileName;
+export interface RenderWorkspace {
+  /** Scratch directory for segments and text files. Removed by `dispose`. */
+  directory: string;
+  /** Name the finished file takes inside the render directory. */
+  outputFileName: string;
+  dispose: () => Promise<void>;
 }
 
-export async function readRenderFile(fileName: string): Promise<Buffer | null> {
+/**
+ * Scratch space for one job, plus the name its output will take.
+ *
+ * The output is named after the job, so a file on disk can always be traced
+ * back to the render that produced it, and no two jobs can collide. The
+ * workspace sits in its own directory that is deleted whatever the outcome —
+ * a failed or cancelled render leaves nothing behind, while a finished MP4 is
+ * outside it and survives.
+ */
+export async function createRenderWorkspace(
+  jobId: string,
+): Promise<RenderWorkspace> {
+  await mkdir(RENDER_DIRECTORY, { recursive: true });
+
+  const directory = path.join(RENDER_DIRECTORY, `.work-${jobId}`);
+  await rm(directory, { recursive: true, force: true });
+  await mkdir(directory, { recursive: true });
+
+  return {
+    directory,
+    outputFileName: `${jobId}.mp4`,
+    dispose: () => rm(directory, { recursive: true, force: true }),
+  };
+}
+
+/** Absolute path of a finished render, for writing, streaming, or probing. */
+export function renderFilePath(fileName: string): string {
+  return resolveSafely(fileName);
+}
+
+export async function renderFileSize(fileName: string): Promise<number | null> {
   try {
-    return await readFile(resolveSafely(fileName));
+    const { size } = await stat(resolveSafely(fileName));
+    return size;
   } catch {
     return null;
   }
@@ -44,6 +64,10 @@ export async function deleteRenderFile(fileName: string): Promise<void> {
   }
 }
 
+/**
+ * File names come from our own rows, but resolving them defensively means a
+ * corrupted or hand-edited value can never escape the render directory.
+ */
 function resolveSafely(fileName: string): string {
   const resolved = path.resolve(RENDER_DIRECTORY, path.basename(fileName));
 

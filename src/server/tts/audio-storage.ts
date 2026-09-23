@@ -29,6 +29,11 @@ export async function writeAudioFile(
   return fileName;
 }
 
+/** Absolute path to a stored clip, for a consumer that needs the file itself. */
+export function audioFilePath(fileName: string): string {
+  return resolveSafely(fileName);
+}
+
 export async function readAudioFile(fileName: string): Promise<Buffer | null> {
   try {
     return await readFile(resolveSafely(fileName));

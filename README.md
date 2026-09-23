@@ -14,7 +14,14 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 7 — captions.** What works today:
+**Step 8 — video rendering.** What works today:
+
+- **A real MP4**, encoded with FFmpeg from the storyboard: 1080×1920 for
+  Shorts or 1920×1080 for long form, with each scene's Korean, romanization
+  and English drawn on frame, its narration when it has been generated, its
+  transition, and its exact duration. Rendering runs on a background job, not
+  in the request
+
 
 - **On-screen Korean, romanization, and translation** with configurable size,
   position, alignment, animation, and per-layer visibility — plus per-scene
@@ -47,17 +54,15 @@ script, written by the scene generator and consumed by the voice stage.
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** asset generation, final MP4 rendering, and the
-YouTube API. These stages are
+**Not implemented yet:** asset generation and the YouTube API. Both stages are
 modelled in the data and shown read-only in the project editor so progress is
 visible as each one is built.
 
-Rendering has its architecture but not its renderer: `POST
-/api/projects/:id/renders` creates a persistent job and returns immediately, a
-queue runs it outside the request, and the job carries status, progress, an
-error message, and an output reference. The renderer behind it is a
-placeholder that writes a manifest instead of a video, so there is no render
-button in the UI yet.
+Two things about rendering are worth knowing. Scenes have no imagery yet —
+`visualPrompt` is a prompt, not a picture — so each scene's backdrop is the
+same deterministic gradient the preview draws. And there is no render button:
+start one with `POST /api/projects/:id/renders`, or with
+`npm run render:worker`, and poll the job for progress.
 
 Without an `AI_API_KEY` the app falls back to a mock generator that returns
 clearly-labelled placeholder lessons, so the whole flow works before you have
@@ -67,6 +72,10 @@ credentials.
 
 - Node.js 20.9 or newer (developed on Node 25)
 - npm 10 or newer
+- A Korean-capable font. macOS and most Linux desktops already have one; if
+  rendering cannot find one, point `RENDER_FONT_PATH` at a font file
+- FFmpeg comes with `npm install` (`ffmpeg-static`). A system FFmpeg on `PATH`
+  is used in preference to it
 
 ## Getting started
 
@@ -287,10 +296,10 @@ Primitives live in `src/components/ui/`: `Button`, `Card`, `Badge`, `Alert`,
 
 ## What to build next
 
-1. **The renderer itself.** Everything around it exists — job, queue, worker,
-   progress, storage, stage rule. Replacing `PlaceholderRenderer` with an
-   FFmpeg implementation is the remaining work.
-2. **Asset generation** for each scene, so a render has imagery to compose.
+1. **Asset generation** for each scene, so renders have real imagery instead of
+   gradient backdrops. The renderer takes one background input per scene, so
+   this is the change it was shaped around.
+2. **A render panel**, with a button, live progress, and a link to the file.
 3. **Move generation onto the job mechanism.** Lesson, scene, and voice
    generation still run inside the request; the render job shows the shape
    they should take.

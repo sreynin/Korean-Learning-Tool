@@ -8,6 +8,13 @@
  * touching the API.
  */
 
+/**
+ * Which cut a job renders. A `both` project produces one render per cut, so
+ * the format belongs to the job rather than to the project.
+ */
+export const RENDER_FORMATS = ["shorts", "long"] as const;
+export type RenderFormat = (typeof RENDER_FORMATS)[number];
+
 export const RENDER_STATUSES = [
   "pending",
   "queued",
@@ -27,12 +34,17 @@ export const ACTIVE_RENDER_STATUSES: RenderStatus[] = [
 export interface RenderJob {
   id: string;
   projectId: string;
+  format: RenderFormat;
   status: RenderStatus;
   /** 0-100. */
   progress: number;
   errorMessage: string | null;
   /** Serving URL for the finished file, or null. */
   outputUrl: string | null;
+  /** Media type of the finished file, or null until one exists. */
+  contentType: string | null;
+  /** Size of the finished file in bytes, or null until one exists. */
+  byteSize: number | null;
   /** ISO 8601 */
   createdAt: string;
   /** ISO 8601, set when a worker claims the job. */

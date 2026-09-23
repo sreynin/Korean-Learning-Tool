@@ -46,7 +46,11 @@ class BlockingRenderer implements Renderer {
     await request.onProgress(25);
     await this.gate;
     await request.onProgress(100);
-    return { outputFileName: `${request.jobId}.json` };
+    return {
+      outputFileName: `${request.jobId}.mp4`,
+      contentType: "video/mp4",
+      byteSize: 1024,
+    };
   }
 
   finish(): void {

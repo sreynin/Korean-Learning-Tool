@@ -1,40 +1,74 @@
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
-import { NotFoundError } from "@/server/errors";
 import { route } from "@/server/http";
-import { getDb } from "@/server/db/client";
-import { readRenderFile } from "@/server/render/render-storage";
+import { getRenderOutput } from "@/server/services/render-service";
 
 interface RouteContext {
   params: Promise<{ fileName: string }>;
 }
 
 /**
- * Serves a finished render. The name is looked up against completed jobs
- * first, so only files this app actually produced can be read.
+ * Serves a finished render.
+ *
+ * A `Range` request is answered with the slice it asked for, which is what
+ * lets a browser's video element seek and start playing before the whole file
+ * has arrived.
  */
-export const GET = route(async (_request: Request, context: RouteContext) => {
+export const GET = route(async (request: Request, context: RouteContext) => {
   const { fileName } = await context.params;
+  const output = await getRenderOutput(fileName);
 
-  const job = await getDb().renderJob.findFirst({
-    where: { outputFileName: fileName, status: "completed" },
-    select: { outputFileName: true },
-  });
+  const range = parseRange(request.headers.get("range"), output.byteSize);
 
-  if (!job?.outputFileName) {
-    throw new NotFoundError("No render found with that name.");
+  if (!range) {
+    return new NextResponse(streamOf(output.filePath), {
+      headers: {
+        "Content-Type": output.contentType,
+        "Content-Length": String(output.byteSize),
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=31536000, immutable",
+      },
+    });
   }
 
-  const bytes = await readRenderFile(job.outputFileName);
-  if (!bytes) {
-    throw new NotFoundError("The render file is missing from disk.");
-  }
-
-  return new NextResponse(new Uint8Array(bytes), {
+  return new NextResponse(streamOf(output.filePath, range), {
+    status: 206,
     headers: {
-      // Step 8 replaces this with video/mp4 once real encoding lands.
-      "Content-Type": "application/json",
-      "Content-Length": String(bytes.byteLength),
+      "Content-Type": output.contentType,
+      "Content-Length": String(range.end - range.start + 1),
+      "Content-Range": `bytes ${range.start}-${range.end}/${output.byteSize}`,
+      "Accept-Ranges": "bytes",
       "Cache-Control": "private, max-age=31536000, immutable",
     },
   });
 });
+
+function streamOf(
+  filePath: string,
+  range?: { start: number; end: number },
+): ReadableStream<Uint8Array> {
+  return Readable.toWeb(
+    createReadStream(filePath, range),
+  ) as ReadableStream<Uint8Array>;
+}
+
+/** `bytes=start-end`, with either end optional. Anything else is ignored. */
+function parseRange(
+  header: string | null,
+  size: number,
+): { start: number; end: number } | null {
+  const match = header ? /^bytes=(\d*)-(\d*)$/.exec(header.trim()) : null;
+  if (!match) return null;
+
+  const [, rawStart, rawEnd] = match;
+  if (!rawStart && !rawEnd) return null;
+
+  // A suffix range ("bytes=-500") asks for the last N bytes.
+  const start = rawStart ? Number(rawStart) : Math.max(0, size - Number(rawEnd));
+  const end = rawStart && rawEnd ? Math.min(Number(rawEnd), size - 1) : size - 1;
+
+  if (start > end || start >= size) return null;
+
+  return { start, end };
+}

@@ -3,7 +3,7 @@ import type { Lesson, LessonGenerationRequest } from "@/types/lesson";
 import type { Scene } from "@/types/scene";
 import type { VoiceLanguage, VoiceOption, VoiceSettings } from "@/types/voice";
 import type { CaptionSettings } from "@/types/caption";
-import type { RenderJob } from "@/types/render";
+import type { RenderFormat, RenderJob } from "@/types/render";
 import type {
   CreateProjectInput,
   ProjectListFilters,
@@ -188,10 +188,10 @@ export const api = {
 
   renders: {
     /** Creates a job and returns immediately — never waits for the render. */
-    start: (projectId: string) =>
+    start: (projectId: string, format?: RenderFormat) =>
       request<{ job: RenderJob; project: VideoProject }>(
         `/projects/${projectId}/renders`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify({ format }) },
       ),
 
     list: (projectId: string) =>

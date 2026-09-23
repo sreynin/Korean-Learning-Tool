@@ -1,7 +1,7 @@
 import type { PrismaClient, RenderJob as RenderJobRow } from "@prisma/client";
 import { getDb } from "@/server/db/client";
 import { ACTIVE_RENDER_STATUSES } from "@/types/render";
-import type { RenderJob, RenderStatus } from "@/types/render";
+import type { RenderFormat, RenderJob, RenderStatus } from "@/types/render";
 
 /**
  * Persistence for render jobs.
@@ -46,7 +46,10 @@ export class RenderJobRepository {
    * single-process app; a multi-worker deployment would want a unique
    * constraint or a real queue.
    */
-  async createIfIdle(projectId: string): Promise<RenderJob | null> {
+  async createIfIdle(
+    projectId: string,
+    format: RenderFormat,
+  ): Promise<RenderJob | null> {
     return this.db.$transaction(async (tx) => {
       const active = await tx.renderJob.findFirst({
         where: { projectId, status: { in: ACTIVE_RENDER_STATUSES } },
@@ -56,7 +59,7 @@ export class RenderJobRepository {
       if (active) return null;
 
       const row = await tx.renderJob.create({
-        data: { projectId, status: "pending", progress: 0 },
+        data: { projectId, format, status: "pending", progress: 0 },
       });
 
       return toDomain(row);
@@ -94,13 +97,18 @@ export class RenderJobRepository {
     });
   }
 
-  async markCompleted(id: string, outputFileName: string): Promise<void> {
+  async markCompleted(
+    id: string,
+    output: { fileName: string; contentType: string; byteSize: number },
+  ): Promise<void> {
     await this.db.renderJob.update({
       where: { id },
       data: {
         status: "completed",
         progress: 100,
-        outputFileName,
+        outputFileName: output.fileName,
+        contentType: output.contentType,
+        byteSize: output.byteSize,
         errorMessage: null,
         completedAt: new Date(),
       },
@@ -118,6 +126,17 @@ export class RenderJobRepository {
     });
   }
 
+  /**
+   * The completed job that produced a given file. Looking the name up here is
+   * what stops the serving route reading a file this app never rendered.
+   */
+  async findCompletedByOutput(outputFileName: string): Promise<RenderJob | null> {
+    const row = await this.db.renderJob.findFirst({
+      where: { outputFileName, status: "completed" },
+    });
+    return row ? toDomain(row) : null;
+  }
+
   /** Jobs a worker should pick up, oldest first. */
   async listClaimable(limit = 10): Promise<RenderJob[]> {
     const rows = await this.db.renderJob.findMany({
@@ -133,10 +152,13 @@ export function toDomain(row: RenderJobRow): RenderJob {
   return {
     id: row.id,
     projectId: row.projectId,
+    format: row.format as RenderFormat,
     status: row.status as RenderStatus,
     progress: row.progress,
     errorMessage: row.errorMessage,
     outputUrl: row.outputFileName ? `/api/renders/${row.outputFileName}` : null,
+    contentType: row.contentType,
+    byteSize: row.byteSize,
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,

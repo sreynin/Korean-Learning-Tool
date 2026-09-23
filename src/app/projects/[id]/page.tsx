@@ -81,8 +81,10 @@ export default async function ProjectEditorPage({
       </div>
 
       <Alert tone="info" className="mb-6">
-        Lesson, storyboard, captions, and narration are available. Asset
-        generation and final rendering are not implemented yet.
+        Lesson, storyboard, captions, narration, and MP4 rendering are
+        available. Rendering is started through the API or{" "}
+        <code>npm run render:worker</code> — it has no button here yet. Asset
+        generation is not implemented.
       </Alert>
 
       <div className="mb-6 flex flex-col gap-6">

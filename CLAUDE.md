@@ -28,7 +28,7 @@ topic → lesson → scenes → assets → voice → captions → preview → re
 ```
 
 All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`,
-`scenes`, `voice`, `captions`, and `preview` are implemented.
+`scenes`, `voice`, `captions`, `preview`, and `render` are implemented.
 
 **There is deliberately no "script" stage.** A scene's `narration` field *is*
 the spoken script — the scene generator produces it and the future voice stage
@@ -45,7 +45,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 5 | Video Preview | **COMPLETE** |
 | 6 | AI Voice | **COMPLETE** (see caveat) |
 | 7 | Captions | **COMPLETE** |
-| 8 | Video Rendering | **ARCHITECTURE ONLY** (see caveat) |
+| 8 | Video Rendering | **COMPLETE** (see caveat) |
 | 9 | YouTube Metadata | NOT STARTED |
 | 10 | Content Library | NOT STARTED |
 | 11 | YouTube Publishing | NOT STARTED |
@@ -58,14 +58,16 @@ are written against the documented SDK API but have never made a real call.
 Model id, structured-output behaviour, real latency, and error mapping are all
 unproven. Set `AI_API_KEY` and generate once before relying on them.
 
-**Step 8 caveat — nothing encodes video yet.** The job model, queue, worker,
-storage, API, and pipeline rule are built and exercised; the renderer behind
-them is `PlaceholderRenderer`, which walks the real progress checkpoints and
-writes a JSON manifest instead of an MP4. Step 8 proper is one file:
-`src/server/render/placeholder-renderer.ts`. Until it lands,
-`STAGE_META.render.implemented` stays `false`, so the UI still says
-"Coming soon" and there is no render button — a render can only be started
-deliberately, through the API or the worker script.
+**Step 8 caveat — real MP4s, placeholder visuals, no button.** `FfmpegRenderer`
+encodes a playable H.264/AAC MP4 at 1080×1920 or 1920×1080, verified against
+seeded projects. Two things are deliberately missing:
+
+- **Scenes have no imagery.** `visualPrompt` is a prompt, not an asset, so each
+  scene's backdrop is the same deterministic gradient the preview draws.
+  Replacing it is a change to one function once the assets stage exists.
+- **No render button.** A render is started through `POST
+  /api/projects/[id]/renders` or `npm run render:worker`. The pipeline stage
+  reports real job state either way.
 
 **Step 10 note** — `/projects` already provides a project library with status
 filtering and search (built in Step 1). Whatever else "Content Library" covers
@@ -89,6 +91,7 @@ not an implementation.
 | Storage | Tables `Project` / `Lesson` / `Storyboard` / `Scene`, behind the `ProjectRepository` interface |
 | AI provider | Anthropic via `@anthropic-ai/sdk` 0.128.0 |
 | Voice provider | ElevenLabs via `fetch`, behind `TextToSpeechProvider` |
+| Renderer | FFmpeg (`ffmpeg-static` binary, system FFmpeg preferred), behind `Renderer` |
 | UI system | Tailwind CSS v4, CSS-first (`@theme inline`), custom primitives in `src/components/ui/` |
 | State management | **No library.** `useState` / `useEffect` + `router.refresh()` |
 | Validation | Zod 4.6.5, on every external boundary |
@@ -179,7 +182,9 @@ src/
 │   ├── tts/           text-to-speech-provider.ts (interface),
 │   │                  elevenlabs-provider.ts, mock-provider.ts,
 │   │                  audio-storage.ts, index.ts (provider selection)
-│   ├── render/        renderer.ts (interface), placeholder-renderer.ts,
+│   ├── render/        renderer.ts (interface), ffmpeg-renderer.ts,
+│   │                  frame-layout.ts (pure text/gradient geometry),
+│   │                  ffmpeg.ts (binary resolution + process boundary),
 │   │                  render-queue.ts (RenderQueue + runRenderJob),
 │   │                  render-storage.ts, index.ts (composition point)
 │   ├── services/      project-service.ts, lesson-service.ts,
@@ -242,7 +247,8 @@ Schema decisions worth knowing before changing it:
   Every write against it is a **single short statement** — create, claim,
   progress, complete, fail. SQLite takes a write lock per statement, so a
   render must never happen inside one; `runRenderJob()` holds no transaction
-  while the renderer runs.
+  while FFmpeg runs. The row carries `format` (which cut), and on success the
+  output's file name, content type, and byte size.
 
 | Command | Purpose |
 | --- | --- |
@@ -290,8 +296,8 @@ and the type, `*_META` in `constants.ts`, and the Zod schema all follow.
 Use them; do not compare format strings inline.
 
 `PIPELINE_STAGES` = `topic, lesson, scenes, assets, voice, captions, preview,
-render, youtube`. `STAGE_META[stage].implemented` gates the UI — `topic`,
-`lesson`, `scenes`, and `preview` are `true`.
+render, youtube`. `STAGE_META[stage].implemented` gates the UI — everything
+except `assets` and `youtube` is `true`.
 
 **Stage status is derived, never set.** `reconcilePipeline()` in
 `src/server/services/pipeline-service.ts` computes every stage from what the
@@ -409,9 +415,62 @@ interface StoredScenes {
 }
 ```
 
-`animation` and `transition` are **enums rather than free text** so a renderer
-can map each value to a real effect. Free-form strings would be
-unimplementable in Step 8.
+`animation` and `transition` are **enums rather than free text** so the
+renderer can map each value to a real effect. Free-form strings would be
+unimplementable. Every value is exercised against FFmpeg in
+`tests/render-ffmpeg.test.ts` — a filter string that is merely wrong still
+type-checks, so adding a value means adding a case there.
+
+### RenderJob — `src/types/render.ts`
+
+```ts
+interface RenderJob {
+  id: string;
+  projectId: string;
+  format: RenderFormat;      // "shorts" | "long"
+  status: RenderStatus;      // pending | queued | processing | completed | failed
+  progress: number;          // 0-100, reported as each scene finishes
+  errorMessage: string | null;
+  outputUrl: string | null;  // /api/renders/<file>, null until one exists
+  contentType: string | null;
+  byteSize: number | null;
+  createdAt: string;
+  startedAt: string | null;  // set on claim
+  completedAt: string | null;
+}
+```
+
+A `both` project renders one job per cut, so `format` lives on the job. The
+output is named after the job id, which makes every file traceable and means
+no render can overwrite another.
+
+### How a render runs — `src/server/render/`
+
+```
+POST /renders → job row → queue → runRenderJob → FfmpegRenderer → MP4
+```
+
+- **Per scene, one segment.** Each scene is encoded on its own and the
+  segments are concatenated with a stream copy. That keeps durations exact
+  (nothing overlaps two scenes), makes progress real (reported as each scene
+  lands, weighted by duration), and means a scene's backdrop is one input to
+  swap when real imagery arrives.
+- **`frame-layout.ts` is pure.** Font sizes, wrapping, stacking, and the
+  gradient are arithmetic with no FFmpeg involved, so the geometry is testable
+  on its own. It is the preview's layout in pixels: same 8% side padding, same
+  font scale, same layer order.
+- **Each wrapped line is its own `drawtext`.** FFmpeg aligns a multi-line
+  block by its widest line, which leaves a centred caption ragged.
+- **Text is passed by file, never inline.** Lesson text contains quotes,
+  colons, and commas, all of which are filtergraph syntax. Expressions are
+  quoted and written without spaces for the same reason.
+- **Audio is optional.** A scene with narration uses the clip, padded with
+  silence to the scene length; a scene without gets `anullsrc`. Every segment
+  therefore has an identical audio track, which is what makes the stream-copy
+  join safe.
+- **Cancellation kills the process.** `AbortSignal` reaches each spawn, and
+  the scratch directory is removed in a `finally`, so a cancelled or failed
+  render leaves no partial file and never reports completion.
 
 ## 6. API Endpoints
 
@@ -448,7 +507,7 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | POST | `/api/projects/[id]/renders` | Create a render job and return immediately |
 | GET | `/api/projects/[id]/renders` | List a project's render jobs |
 | GET | `/api/projects/[id]/renders/[jobId]` | Poll one job's status and progress |
-| GET | `/api/renders/[fileName]` | Serve a finished render |
+| GET | `/api/renders/[fileName]` | Serve a finished render (`video/mp4`, range requests) |
 | PUT | `/api/projects/[id]/preview-review` | Record that the preview was reviewed |
 
 **`GET /api/projects`** — query `status`, `format`, `search`; validated by
@@ -489,6 +548,13 @@ server-side, sets `pipeline.scenes` to `complete`, moves `status`
 `storyboardEditSchema` (1–120 scenes, narration required, duration 1–60).
 `order` is renumbered from array position, so reordering is just array order.
 Preserves the original `generatedAt`/`model` and sets `editedAt`.
+
+**`POST /api/projects/[id]/renders`** — body is optional: `{ format }` picks
+the cut for a `both` project, defaulting to `shorts`, and asking for a cut the
+project does not produce is a 400. 409 when the project has no storyboard, or
+when a render is already in flight. Returns 201 with the job and the project.
+**No `maxDuration`** — the route creates the job and returns; the render
+happens on the queue.
 
 All handlers are wrapped by `route()` in `src/server/http.ts`, which maps
 `AppError` subclasses to their status and converts anything else into a 500
@@ -632,8 +698,8 @@ Step 4  — Scene Generator        → COMPLETE  (live API path unverified)
 Step 5  — Video Preview          → COMPLETE
 Step 6  — AI Voice               → COMPLETE (live provider unverified)
 Step 7  — Captions               → COMPLETE
-Step 8  — Video Rendering        → NEXT (job architecture done, encoder not)
-Step 9  — YouTube Metadata       → PLANNED
+Step 8  — Video Rendering        → COMPLETE (placeholder visuals, no button)
+Step 9  — YouTube Metadata       → NEXT
 Step 10 — Content Library        → PLANNED
 Step 11 — YouTube Publishing     → PLANNED
 Step 12 — Production Readiness   → PLANNED
@@ -660,24 +726,34 @@ trade-offs that now have an expiry date.
    process exits, and it does not span instances. `scripts/render-worker.ts`
    proves the job row is the only coupling, and replacing the queue is one new
    `RenderQueue` implementation.
-6. **Tests cover persistence, stage rules, and the render lifecycle only.**
-   Duration reconciliation, `"both"` stat counting, and quiz answer
-   reconciliation are still unverified by automation.
-7. **Dead code.** `api.projects.list/get/update`, `api.stats.get`, and
+6. **Tests cover persistence, stage rules, and rendering only.** Duration
+   reconciliation, `"both"` stat counting, and quiz answer reconciliation are
+   still unverified by automation.
+7. **Rendered video has no imagery, and no highlight colour.** Backdrops are
+   gradients because no assets exist. `highlightTerms` is drawn plain in the
+   video though the preview colours it — inline multi-colour text would need
+   per-run width measurement that FFmpeg's `drawtext` cannot provide.
+   `slide` renders as a fade for the same reason: there is nothing behind a
+   scene to slide over.
+8. **Rendering is CPU-bound and unbounded in time.** A 30-second Short takes
+   about 4 seconds; a 10-minute long-form cut took 66 seconds on an M-series
+   Mac. Nothing limits how many renders run at once beyond one job per
+   project.
+9. **Dead code.** `api.projects.list/get/update`, `api.stats.get`, and
    `api.lessons.generate` have no callers. `/api/stats` and `/api/health` have
    no in-app consumers.
-8. **The server-only boundary is convention, not enforcement.** There is no
+10. **The server-only boundary is convention, not enforcement.** There is no
    `server-only` package guard. A stray import of `src/server/**` from a client
    component would pull secrets into the browser bundle. Currently clean —
    verified that `process.env.AI_API_KEY` appears nowhere in client chunks.
-9. **Schema asymmetry.** `lessonSchema` accepts empty strings; `lessonEditSchema`
+11. **Schema asymmetry.** `lessonSchema` accepts empty strings; `lessonEditSchema`
    rejects them. A sparse generation can save-fail until the user fills it in.
-10. **Orphan env var** — `NEXT_PUBLIC_APP_URL` is in `.env.example` but is not
+12. **Orphan env var** — `NEXT_PUBLIC_APP_URL` is in `.env.example` but is not
     in the `env.ts` schema and is referenced nowhere.
-11. **`saveLesson`'s `model` argument is ignored when `edited: true`** — the
+13. **`saveLesson`'s `model` argument is ignored when `edited: true`** — the
     route passes `"manual"`, the service preserves the original. Harmless,
     confusing.
-12. **Dashboard stat overlap.** A `"both"` project counts toward both the
+14. **Dashboard stat overlap.** A `"both"` project counts toward both the
     Shorts and Long Videos tiles, so they intentionally do not sum to
     "Videos Created".
 
@@ -687,12 +763,13 @@ Names only — never commit or print values.
 
 | Variable | Used? | Purpose |
 |---|---|---|
-| `DATA_DIR` | Yes | Where the JSON store is written (default `./data`) |
-| `SEED_SAMPLE_DATA` | Yes | Seed example projects on first run |
+| `DATABASE_URL` | Yes | SQLite file, resolved from the project root |
 | `AI_API_KEY` | Yes | Anthropic key. Blank → mock generator |
 | `AI_MODEL` | Yes | Generation model (default `claude-opus-5`) |
+| `ELEVENLABS_API_KEY` | Yes | Voice key. Blank → mock voice provider |
+| `ELEVENLABS_MODEL` | Yes | Voice model (default `eleven_multilingual_v2`) |
+| `RENDER_FONT_PATH` | Yes | Font for on-screen text. Blank → search system paths |
 | `NEXT_PUBLIC_APP_URL` | **No** | Declared but unused (see §12) |
-| `ELEVENLABS_API_KEY` | **No** | Reserved for Step 6 |
 | `YOUTUBE_CLIENT_ID` | **No** | Reserved for Step 11 |
 | `YOUTUBE_CLIENT_SECRET` | **No** | Reserved for Step 11 |
 

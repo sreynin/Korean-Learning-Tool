@@ -22,6 +22,10 @@ const serverEnvSchema = z.object({
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_MODEL: z.string().min(1).default("eleven_multilingual_v2"),
 
+  // Rendering. Optional: the renderer searches the usual system font paths for
+  // a Korean-capable face, and this overrides that search.
+  RENDER_FONT_PATH: z.string().optional(),
+
   // Declared but unused until the matching feature lands.
   YOUTUBE_CLIENT_ID: z.string().optional(),
   YOUTUBE_CLIENT_SECRET: z.string().optional(),
@@ -41,6 +45,7 @@ export function getServerEnv(): ServerEnv {
     AI_MODEL: emptyToUndefined(process.env.AI_MODEL),
     ELEVENLABS_API_KEY: emptyToUndefined(process.env.ELEVENLABS_API_KEY),
     ELEVENLABS_MODEL: emptyToUndefined(process.env.ELEVENLABS_MODEL),
+    RENDER_FONT_PATH: emptyToUndefined(process.env.RENDER_FONT_PATH),
     YOUTUBE_CLIENT_ID: emptyToUndefined(process.env.YOUTUBE_CLIENT_ID),
     YOUTUBE_CLIENT_SECRET: emptyToUndefined(process.env.YOUTUBE_CLIENT_SECRET),
   });

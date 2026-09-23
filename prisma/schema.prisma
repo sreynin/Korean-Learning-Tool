@@ -161,6 +161,8 @@ model RenderJob {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  /// shorts | long — which cut this job renders.
+  format String @default("shorts")
   /// pending | queued | processing | completed | failed
   status String @default("pending")
   /// 0-100.
@@ -170,6 +172,10 @@ model RenderJob {
   errorMessage String?
   /// File name inside the render directory. Null until a render succeeds.
   outputFileName String?
+  /// Media type of the finished file, e.g. video/mp4.
+  contentType String?
+  /// Size of the finished file in bytes.
+  byteSize Int?
 
   createdAt   DateTime  @default(now())
   startedAt   DateTime?

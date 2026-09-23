@@ -33,7 +33,11 @@ class SucceedingRenderer implements Renderer {
       this.reported.push(percent);
       await request.onProgress(percent);
     }
-    return { outputFileName: `${request.jobId}.json` };
+    return {
+      outputFileName: `${request.jobId}.mp4`,
+      contentType: "video/mp4",
+      byteSize: 2048,
+    };
   }
 }
 
@@ -60,7 +64,7 @@ describe("creating a render job", () => {
   test("creates a pending job with no output", async () => {
     const projectId = await seedRenderableProject();
 
-    const job = await jobs.createIfIdle(projectId);
+    const job = await jobs.createIfIdle(projectId, "shorts");
 
     assert.ok(job);
     assert.equal(job.status, "pending");
@@ -74,8 +78,8 @@ describe("creating a render job", () => {
   test("refuses a second job while one is active", async () => {
     const projectId = await seedRenderableProject();
 
-    const first = await jobs.createIfIdle(projectId);
-    const second = await jobs.createIfIdle(projectId);
+    const first = await jobs.createIfIdle(projectId, "shorts");
+    const second = await jobs.createIfIdle(projectId, "shorts");
 
     assert.ok(first);
     assert.equal(second, null, "duplicate renders are refused");
@@ -84,10 +88,10 @@ describe("creating a render job", () => {
   test("allows a new job once the previous one finished", async () => {
     const projectId = await seedRenderableProject();
 
-    const first = await jobs.createIfIdle(projectId);
+    const first = await jobs.createIfIdle(projectId, "shorts");
     await jobs.markFailed(first!.id, "nope");
 
-    const second = await jobs.createIfIdle(projectId);
+    const second = await jobs.createIfIdle(projectId, "shorts");
     assert.ok(second, "a settled job releases the slot");
   });
 });
@@ -95,7 +99,7 @@ describe("creating a render job", () => {
 describe("status transitions", () => {
   test("moves pending → queued → processing → completed", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
 
     await jobs.markQueued(job.id);
     assert.equal((await jobs.findById(job.id))?.status, "queued");
@@ -105,17 +109,23 @@ describe("status transitions", () => {
     assert.equal(processing?.status, "processing");
     assert.ok(processing?.startedAt, "startedAt is recorded on claim");
 
-    await jobs.markCompleted(job.id, "out.json");
+    await jobs.markCompleted(job.id, {
+      fileName: "out.mp4",
+      contentType: "video/mp4",
+      byteSize: 4096,
+    });
     const done = await jobs.findById(job.id);
     assert.equal(done?.status, "completed");
     assert.equal(done?.progress, 100);
-    assert.equal(done?.outputUrl, "/api/renders/out.json");
+    assert.equal(done?.outputUrl, "/api/renders/out.mp4");
+    assert.equal(done?.contentType, "video/mp4");
+    assert.equal(done?.byteSize, 4096);
     assert.ok(done?.completedAt);
   });
 
   test("a job can only be claimed once", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
 
     assert.equal(await jobs.claim(job.id), true);
     assert.equal(await jobs.claim(job.id), false, "a second worker loses");
@@ -123,7 +133,7 @@ describe("status transitions", () => {
 
   test("failure records the reason and a completion time", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
 
     await jobs.claim(job.id);
     await jobs.markFailed(job.id, "Encoder exploded");
@@ -139,7 +149,7 @@ describe("status transitions", () => {
 describe("progress", () => {
   test("updates while processing and never moves backwards", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
     await jobs.claim(job.id);
 
     await jobs.updateProgress(job.id, 25);
@@ -155,7 +165,7 @@ describe("progress", () => {
 
   test("is ignored for a job that is not processing", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
 
     await jobs.updateProgress(job.id, 50);
     assert.equal((await jobs.findById(job.id))?.progress, 0);
@@ -165,7 +175,7 @@ describe("progress", () => {
 describe("running a job through the queue", () => {
   test("a successful render reports progress and stores output", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
     const renderer = new SucceedingRenderer();
 
     await runRenderJob({ jobId: job.id, renderer, jobs, projects });
@@ -173,13 +183,14 @@ describe("running a job through the queue", () => {
     const settled = await jobs.findById(job.id);
     assert.equal(settled?.status, "completed");
     assert.equal(settled?.progress, 100);
-    assert.ok(settled?.outputUrl?.endsWith(".json"));
+    assert.ok(settled?.outputUrl?.endsWith(".mp4"));
+    assert.equal(settled?.contentType, "video/mp4");
     assert.deepEqual(renderer.reported, [10, 50, 100]);
   });
 
   test("a failed render marks only the job and keeps the message", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
 
     await runRenderJob({ jobId: job.id, renderer: new FailingRenderer(), jobs, projects });
 
@@ -216,7 +227,7 @@ describe("a failed render does not destroy project data", () => {
     });
     await projects.update(projectId, { captionsConfigured: true });
 
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({ jobId: job.id, renderer: new FailingRenderer(), jobs, projects });
 
     const after = await projects.findById(projectId);
@@ -230,10 +241,10 @@ describe("a failed render does not destroy project data", () => {
   test("a failed retry keeps an earlier successful render", async () => {
     const projectId = await seedRenderableProject();
 
-    const first = (await jobs.createIfIdle(projectId))!;
+    const first = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({ jobId: first.id, renderer: new SucceedingRenderer(), jobs, projects });
 
-    const second = (await jobs.createIfIdle(projectId))!;
+    const second = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({ jobId: second.id, renderer: new FailingRenderer(), jobs, projects });
 
     const project = await projects.findById(projectId);
@@ -254,7 +265,7 @@ describe("render stage status", () => {
 
   test("is in progress while a job is active", async () => {
     const projectId = await seedRenderableProject();
-    await jobs.createIfIdle(projectId);
+    await jobs.createIfIdle(projectId, "shorts");
 
     const project = await projects.findById(projectId);
     assert.equal(reconcilePipeline(project!).render.status, "in_progress");
@@ -262,7 +273,7 @@ describe("render stage status", () => {
 
   test("is complete once a render produces output", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({ jobId: job.id, renderer: new SucceedingRenderer(), jobs, projects });
 
     const project = await projects.findById(projectId);
@@ -271,7 +282,7 @@ describe("render stage status", () => {
 
   test("returns to pending when the only job failed", async () => {
     const projectId = await seedRenderableProject();
-    const job = (await jobs.createIfIdle(projectId))!;
+    const job = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({ jobId: job.id, renderer: new FailingRenderer(), jobs, projects });
 
     const project = await projects.findById(projectId);
@@ -285,7 +296,7 @@ describe("render stage status", () => {
   test("the stored pipeline settles with the job, not just the derived one", async () => {
     const projectId = await seedRenderableProject();
 
-    const completed = (await jobs.createIfIdle(projectId))!;
+    const completed = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({
       jobId: completed.id,
       renderer: new SucceedingRenderer(),
@@ -298,7 +309,7 @@ describe("render stage status", () => {
       "a finished render is persisted, not left claiming to be in progress",
     );
 
-    const failed = (await jobs.createIfIdle(projectId))!;
+    const failed = (await jobs.createIfIdle(projectId, "shorts"))!;
     await runRenderJob({
       jobId: failed.id,
       renderer: new FailingRenderer(),
@@ -314,7 +325,7 @@ describe("render stage status", () => {
 
   test("creating a job alone never marks the stage complete", async () => {
     const projectId = await seedRenderableProject();
-    await jobs.createIfIdle(projectId);
+    await jobs.createIfIdle(projectId, "shorts");
 
     const project = await projects.findById(projectId);
     assert.notEqual(reconcilePipeline(project!).render.status, "complete");

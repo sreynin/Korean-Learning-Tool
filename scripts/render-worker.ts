@@ -19,7 +19,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@prisma/client";
 import { PrismaProjectRepository } from "@/server/repositories/prisma-project-repository";
 import { RenderJobRepository } from "@/server/repositories/render-job-repository";
-import { PlaceholderRenderer } from "@/server/render/placeholder-renderer";
+import { getRenderer } from "@/server/render";
 import { runRenderJob } from "@/server/render/render-queue";
 
 const POLL_INTERVAL_MS = 2000;
@@ -32,7 +32,7 @@ async function main() {
   });
   const jobs = new RenderJobRepository(prisma);
   const projects = new PrismaProjectRepository(prisma);
-  const renderer = new PlaceholderRenderer();
+  const renderer = getRenderer();
 
   const controller = new AbortController();
   const stop = () => controller.abort();

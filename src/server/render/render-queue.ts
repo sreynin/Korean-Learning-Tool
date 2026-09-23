@@ -102,12 +102,17 @@ export async function runRenderJob(options: {
     const result = await renderer.render({
       jobId,
       project,
+      format: job.format,
       signal,
       onProgress: (percent) => jobs.updateProgress(jobId, percent),
     });
 
     outputFileName = result.outputFileName;
-    await jobs.markCompleted(jobId, result.outputFileName);
+    await jobs.markCompleted(jobId, {
+      fileName: result.outputFileName,
+      contentType: result.contentType,
+      byteSize: result.byteSize,
+    });
   } catch (error) {
     // A failed render must leave the project exactly as it was. Only the job
     // records the failure, and any partial file is removed so nothing can be

@@ -1,9 +1,11 @@
-import { ConflictError, NotFoundError } from "@/server/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getRenderJobRepository } from "@/server/repositories/render-job-repository";
 import { getRenderQueue } from "@/server/render";
+import { renderFilePath, renderFileSize } from "@/server/render/render-storage";
 import { getProject } from "@/server/services/project-service";
 import { syncPipeline } from "@/server/services/pipeline-service";
-import type { RenderJob } from "@/types/render";
+import { producesLongForm, producesShorts } from "@/types/project";
+import type { RenderFormat, RenderJob } from "@/types/render";
 import type { VideoProject } from "@/types/project";
 
 export interface StartRenderResult {
@@ -18,12 +20,16 @@ export interface StartRenderResult {
  * that is the whole point of the job model, and why the route has no long
  * `maxDuration`.
  */
-export async function startRender(projectId: string): Promise<StartRenderResult> {
+export async function startRender(
+  projectId: string,
+  requestedFormat?: RenderFormat,
+): Promise<StartRenderResult> {
   const project = await getProject(projectId);
   assertRenderable(project);
 
+  const format = resolveRenderFormat(project, requestedFormat);
   const jobs = getRenderJobRepository();
-  const job = await jobs.createIfIdle(projectId);
+  const job = await jobs.createIfIdle(projectId, format);
 
   if (!job) {
     throw new ConflictError(
@@ -57,6 +63,39 @@ export async function listRenderJobs(projectId: string): Promise<RenderJob[]> {
   return getRenderJobRepository().listForProject(projectId);
 }
 
+export interface RenderOutput {
+  filePath: string;
+  contentType: string;
+  byteSize: number;
+}
+
+/**
+ * Locates a finished render for serving.
+ *
+ * The name is resolved against a completed job rather than trusted from the
+ * URL, so only files this app produced can be read, and the content type comes
+ * from the row instead of being guessed from the extension.
+ */
+export async function getRenderOutput(fileName: string): Promise<RenderOutput> {
+  const job = await getRenderJobRepository().findCompletedByOutput(fileName);
+
+  if (!job) {
+    throw new NotFoundError("No render found with that name.");
+  }
+
+  const size = await renderFileSize(fileName);
+
+  if (size === null) {
+    throw new NotFoundError("The render file is missing from disk.");
+  }
+
+  return {
+    filePath: renderFilePath(fileName),
+    contentType: job.contentType ?? "video/mp4",
+    byteSize: size,
+  };
+}
+
 /**
  * What a project needs before it can be rendered at all.
  *
@@ -72,4 +111,32 @@ export function assertRenderable(project: VideoProject): void {
       "This project has no storyboard yet, so there is nothing to render.",
     );
   }
+}
+
+/**
+ * Which cut to render.
+ *
+ * A project that produces one cut renders that one, and asking for the other
+ * is a mistake worth reporting rather than quietly ignoring. A `both` project
+ * renders each cut separately, one job at a time, defaulting to the Short.
+ */
+export function resolveRenderFormat(
+  project: VideoProject,
+  requested?: RenderFormat,
+): RenderFormat {
+  const available: RenderFormat[] = [
+    ...(producesShorts(project.format) ? (["shorts"] as const) : []),
+    ...(producesLongForm(project.format) ? (["long"] as const) : []),
+  ];
+
+  if (!requested) return available[0];
+
+  if (!available.includes(requested)) {
+    throw new ValidationError(
+      `This project does not produce a ${requested === "shorts" ? "Short" : "long-form video"}.`,
+      [{ field: "format", message: "Not produced by this project's format." }],
+    );
+  }
+
+  return requested;
 }

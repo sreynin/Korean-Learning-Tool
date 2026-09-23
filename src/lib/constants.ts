@@ -198,11 +198,9 @@ export const STAGE_META: Record<
     implemented: true,
   },
   render: {
-    // The job lifecycle behind this stage exists, but nothing encodes video
-    // yet, so the UI still says "Coming soon".
     label: "Render",
-    description: "Final render at the target resolution.",
-    implemented: false,
+    description: "Final MP4 at the target resolution, encoded from the storyboard.",
+    implemented: true,
   },
   youtube: {
     label: "YouTube metadata",

@@ -1,4 +1,4 @@
-import { PlaceholderRenderer } from "@/server/render/placeholder-renderer";
+import { FfmpegRenderer } from "@/server/render/ffmpeg-renderer";
 import { InProcessRenderQueue } from "@/server/render/render-queue";
 import type { RenderQueue } from "@/server/render/render-queue";
 import type { Renderer } from "@/server/render/renderer";
@@ -6,9 +6,9 @@ import type { Renderer } from "@/server/render/renderer";
 /**
  * Single composition point for rendering.
  *
- * Step 8 swaps `PlaceholderRenderer` for the FFmpeg implementation here.
- * Moving to a real queue swaps `InProcessRenderQueue` here. Nothing else
- * changes, because everything above depends on the interfaces.
+ * Moving to a real queue swaps `InProcessRenderQueue` here, and a different
+ * encoder swaps `FfmpegRenderer`. Nothing else changes, because everything
+ * above depends on the interfaces.
  */
 const globalForRender = globalThis as unknown as {
   __renderer?: Renderer;
@@ -17,7 +17,7 @@ const globalForRender = globalThis as unknown as {
 
 export function getRenderer(): Renderer {
   if (!globalForRender.__renderer) {
-    globalForRender.__renderer = new PlaceholderRenderer();
+    globalForRender.__renderer = new FfmpegRenderer();
   }
   return globalForRender.__renderer;
 }
