@@ -27,8 +27,8 @@ The intended production pipeline is:
 topic → lesson → scenes → assets → voice → captions → preview → render → youtube
 ```
 
-All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`, and
-`scenes` are implemented.
+All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`,
+`scenes`, and `preview` are implemented.
 
 **There is deliberately no "script" stage.** A scene's `narration` field *is*
 the spoken script — the scene generator produces it and the future voice stage
@@ -42,7 +42,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 2 | Create Video workflow | **COMPLETE** |
 | 3 | AI Lesson Generator | **COMPLETE** (see caveat) |
 | 4 | Scene Generator | **COMPLETE** (see caveat) |
-| 5 | Video Preview | **NOT STARTED** |
+| 5 | Video Preview | **COMPLETE** |
 | 6 | AI Voice | NOT STARTED |
 | 7 | Captions | NOT STARTED |
 | 8 | Video Rendering | NOT STARTED |
@@ -137,6 +137,8 @@ src/
 │   ├── create/    create-workflow, create-project-form, generation-progress
 │   ├── lesson/    lesson-panel, lesson-view, lesson-editor
 │   ├── scenes/    scene-panel, scene-card
+│   ├── preview/   preview-workspace, scene-stage, playback-controls,
+│   │              preview-timeline, scene-properties, use-scene-playback
 │   ├── projects/  project-card, project-grid, project-filters,
 │   │              pipeline-list, delete-project-button
 │   └── dashboard/ stats-grid, project-section
@@ -145,6 +147,7 @@ src/
 │   ├── env.ts         Zod-validated server env — SECRETS, server-only
 │   ├── api-client.ts  typed client for /api
 │   ├── constants.ts   display metadata for every enum + STAGE_META
+│   ├── preview.ts     frame sizes, animation/transition class maps
 │   └── utils/         cn, format, project
 │
 ├── server/
@@ -250,7 +253,11 @@ Use them; do not compare format strings inline.
 
 `PIPELINE_STAGES` = `topic, lesson, scenes, assets, voice, captions, preview,
 render, youtube`. `STAGE_META[stage].implemented` gates the UI — `topic`,
-`lesson`, and `scenes` are `true`.
+`lesson`, `scenes`, and `preview` are `true`.
+
+`preview` is `implemented` but its per-project stage status is never set to
+`complete`: previewing produces no artifact, so there is nothing to record.
+Do not auto-complete it on a page view.
 
 Changing this list is a **data migration**: `normalizeProject()` rebuilds every
 stored `pipeline` against it on read, carrying renamed stages over and
@@ -535,8 +542,8 @@ Step 1  — Project setup          → COMPLETE
 Step 2  — Create Video workflow  → COMPLETE
 Step 3  — AI Lesson Generator    → COMPLETE  (live API path unverified)
 Step 4  — Scene Generator        → COMPLETE  (live API path unverified)
-Step 5  — Video Preview          → NEXT
-Step 6  — AI Voice               → PLANNED
+Step 5  — Video Preview          → COMPLETE
+Step 6  — AI Voice               → NEXT
 Step 7  — Captions               → PLANNED
 Step 8  — Video Rendering        → PLANNED
 Step 9  — YouTube Metadata       → PLANNED

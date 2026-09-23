@@ -153,7 +153,8 @@ export const STAGE_STATUS_META: Record<
 
 /**
  * The production pipeline as shown in the editor. `implemented` gates the UI:
- * only the topic step exists today, so every other step renders as read-only.
+ * a step with `implemented: false` renders read-only with a "Coming soon"
+ * badge instead of an action.
  */
 export const STAGE_META: Record<
   PipelineStage,
@@ -192,8 +193,8 @@ export const STAGE_META: Record<
   },
   preview: {
     label: "Preview",
-    description: "Assembled video for review before rendering.",
-    implemented: false,
+    description: "Browser playback of the storyboard, at the final frame size.",
+    implemented: true,
   },
   render: {
     label: "Render",

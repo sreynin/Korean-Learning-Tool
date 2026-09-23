@@ -14,7 +14,12 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 4 — the scene generator.** What works today:
+**Step 5 — the video preview.** What works today:
+
+- **Browser playback of a storyboard** at the real frame size (1080×1920 or
+  1920×1080) with scene animations, transitions, a timeline, and transport
+  controls — at `/projects/:id/preview`
+
 
 - **Turning a lesson into a storyboard** — an ordered list of typed, timed
   scenes with on-screen text, narration, visual prompts, animation and
@@ -32,8 +37,8 @@ script, written by the scene generator and consumed by the voice stage.
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** visual generation, voice synthesis, caption
-rendering, video preview, video export, and the YouTube API. These stages are
+**Not implemented yet:** asset generation, voice synthesis, caption
+rendering, final rendering, and the YouTube API. These stages are
 modelled in the data and shown read-only in the project editor so progress is
 visible as each one is built.
 
@@ -185,7 +190,8 @@ which shows a spinner and blocks repeat submissions.
 | `/` | Dashboard — statistics, recent, drafts, completed |
 | `/create` | Create a new video project |
 | `/projects` | Project library, filterable by status and search |
-| `/projects/:id` | Project editor — pipeline progress and details |
+| `/projects/:id` | Project editor — lesson, storyboard, pipeline progress |
+| `/projects/:id/preview` | Video preview — playback, timeline, scene properties |
 | `/settings` | Configuration and integration status |
 
 Filtering on `/projects` is driven by the URL (`?status=draft&search=particle`),

@@ -7,6 +7,7 @@ import { DeleteProjectButton } from "@/components/projects/delete-project-button
 import { PipelineList } from "@/components/projects/pipeline-list";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -49,6 +50,7 @@ export default async function ProjectEditorPage({
   const format = FORMAT_META[project.format];
   const status = STATUS_META[project.status];
   const completedStages = countCompletedStages(project);
+  const hasScenes = (project.scenes?.scenes.length ?? 0) > 0;
 
   return (
     <>
@@ -56,10 +58,17 @@ export default async function ProjectEditorPage({
         title={project.title}
         description={project.topic}
         actions={
-          <DeleteProjectButton
-            projectId={project.id}
-            projectTitle={project.title}
-          />
+          <>
+            {hasScenes ? (
+              <ButtonLink href={`/projects/${project.id}/preview`}>
+                Preview
+              </ButtonLink>
+            ) : null}
+            <DeleteProjectButton
+              projectId={project.id}
+              projectTitle={project.title}
+            />
+          </>
         }
       />
 
