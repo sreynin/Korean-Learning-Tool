@@ -1,6 +1,7 @@
 import type { ApiErrorCode, ApiResponse, FieldIssue } from "@/types/api";
 import type { Lesson, LessonGenerationRequest } from "@/types/lesson";
 import type { Scene } from "@/types/scene";
+import type { VoiceLanguage, VoiceOption, VoiceSettings } from "@/types/voice";
 import type {
   CreateProjectInput,
   ProjectListFilters,
@@ -139,6 +140,31 @@ export const api = {
       request<VideoProject>(`/projects/${projectId}/scenes`, {
         method: "PUT",
         body: JSON.stringify({ scenes }),
+      }),
+  },
+
+  voices: {
+    list: (language?: VoiceLanguage) =>
+      request<{
+        voices: VoiceOption[];
+        provider: string;
+        capabilities: { speed: boolean; pitch: boolean; volume: boolean };
+      }>(`/voices${language ? `?language=${language}` : ""}`),
+
+    saveSettings: (projectId: string, settings: VoiceSettings) =>
+      request<VideoProject>(`/projects/${projectId}/voice-settings`, {
+        method: "PUT",
+        body: JSON.stringify(settings),
+      }),
+
+    generate: (projectId: string, sceneId: string) =>
+      request<VideoProject>(`/projects/${projectId}/scenes/${sceneId}/audio`, {
+        method: "POST",
+      }),
+
+    remove: (projectId: string, sceneId: string) =>
+      request<VideoProject>(`/projects/${projectId}/scenes/${sceneId}/audio`, {
+        method: "DELETE",
       }),
   },
 

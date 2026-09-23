@@ -5,6 +5,7 @@ import {
   producesLongForm,
   producesShorts,
 } from "@/types/project";
+import { defaultVoiceSettings } from "@/types/voice";
 import type {
   PipelineStage,
   ProjectPipeline,
@@ -32,6 +33,9 @@ export function normalizeProject(raw: VideoProject): VideoProject {
     visualStyle: project.visualStyle ?? "clean_educational",
     lesson: project.lesson ?? null,
     scenes: project.scenes ?? null,
+    voiceSettings:
+      project.voiceSettings ??
+      defaultVoiceSettings(project.targetLanguage === "korean" ? "korean" : "english"),
     shortsDurationSeconds: producesShorts(project.format)
       ? (project.shortsDurationSeconds ??
         nearest(targetDurationSeconds, SHORTS_DURATION_OPTIONS))

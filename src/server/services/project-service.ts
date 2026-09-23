@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NotFoundError } from "@/server/errors";
+import { defaultVoiceSettings } from "@/types/voice";
 import { getProjectRepository } from "@/server/repositories";
 import {
   PIPELINE_STAGES,
@@ -63,6 +64,9 @@ export async function createProject(
       : null,
     lesson: null,
     scenes: null,
+    voiceSettings: defaultVoiceSettings(
+      input.targetLanguage === "korean" ? "korean" : "english",
+    ),
     pipeline: createInitialPipeline(now),
     createdAt: now,
     updatedAt: now,

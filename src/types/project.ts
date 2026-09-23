@@ -1,5 +1,6 @@
 import type { StoredLesson } from "@/types/lesson";
 import type { StoredScenes } from "@/types/scene";
+import type { VoiceSettings } from "@/types/voice";
 
 /**
  * Domain model for a Korean-learning video project.
@@ -107,6 +108,8 @@ export interface VideoProject {
   lesson: StoredLesson | null;
   /** The storyboard built from the lesson, or null until generated. */
   scenes: StoredScenes | null;
+  /** Narration voice configuration for this project. */
+  voiceSettings: VoiceSettings;
   pipeline: ProjectPipeline;
   /** ISO 8601 */
   createdAt: string;

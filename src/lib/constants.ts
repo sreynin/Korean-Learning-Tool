@@ -184,7 +184,7 @@ export const STAGE_META: Record<
   voice: {
     label: "Voice",
     description: "Narration from each scene, synthesised to audio.",
-    implemented: false,
+    implemented: true,
   },
   captions: {
     label: "Captions",

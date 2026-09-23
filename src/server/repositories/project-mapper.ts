@@ -1,4 +1,10 @@
-import type { Lesson, Project, Scene, Storyboard } from "@prisma/client";
+import type {
+  Lesson,
+  Project,
+  Scene,
+  SceneAudio as SceneAudioRow,
+  Storyboard,
+} from "@prisma/client";
 import { normalizePipeline } from "@/server/repositories/normalize-project";
 import type { LessonSection, QuizQuestion, StoredLesson } from "@/types/lesson";
 import type {
@@ -16,12 +22,16 @@ import type {
   SceneType,
   StoredScenes,
 } from "@/types/scene";
+import { defaultVoiceSettings } from "@/types/voice";
+import type { SceneAudio, VoiceLanguage, VoiceSettings } from "@/types/voice";
 import type { LongDuration, ShortsDuration } from "@/types/project";
 
 /** A project row with everything the domain object needs. */
+export type SceneRow = Scene & { audio: SceneAudioRow | null };
+
 export type ProjectRow = Project & {
   lesson: Lesson | null;
-  storyboard: (Storyboard & { scenes: Scene[] }) | null;
+  storyboard: (Storyboard & { scenes: SceneRow[] }) | null;
 };
 
 /**
@@ -47,6 +57,7 @@ export function toDomain(row: ProjectRow): VideoProject {
     longDurationSeconds: row.longDurationSeconds as LongDuration | null,
     lesson: row.lesson ? toStoredLesson(row.lesson) : null,
     scenes: row.storyboard ? toStoredScenes(row.storyboard) : null,
+    voiceSettings: toVoiceSettings(row.voiceSettings, row.targetLanguage),
     pipeline: normalizePipeline(parseJson(row.pipeline, {})),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -70,7 +81,7 @@ function toStoredLesson(row: Lesson): StoredLesson {
   };
 }
 
-function toStoredScenes(row: Storyboard & { scenes: Scene[] }): StoredScenes {
+function toStoredScenes(row: Storyboard & { scenes: SceneRow[] }): StoredScenes {
   return {
     scenes: [...row.scenes]
       .sort((a, b) => a.order - b.order)
@@ -87,10 +98,57 @@ function toStoredScenes(row: Storyboard & { scenes: Scene[] }): StoredScenes {
         animation: scene.animation as SceneAnimation,
         background: scene.background,
         transition: scene.transition as SceneTransition,
+        audio: scene.audio ? toSceneAudio(scene.audio) : null,
       })),
     generatedAt: row.generatedAt.toISOString(),
     model: row.model,
     editedAt: row.editedAt?.toISOString() ?? null,
+  };
+}
+
+/**
+ * The stored language may be one the voice providers do not offer (Chinese),
+ * so fall back rather than hand the UI a value it cannot render.
+ */
+function toVoiceSettings(raw: string | null, targetLanguage: string): VoiceSettings {
+  const fallbackLanguage: VoiceLanguage =
+    targetLanguage === "korean" ? "korean" : "english";
+
+  if (!raw) return defaultVoiceSettings(fallbackLanguage);
+
+  const parsed = parseJson<Partial<VoiceSettings>>(raw, {});
+  const base = defaultVoiceSettings(
+    parsed.language === "korean" || parsed.language === "english"
+      ? parsed.language
+      : fallbackLanguage,
+  );
+
+  return {
+    language: base.language,
+    voiceId: parsed.voiceId ?? base.voiceId,
+    speed: parsed.speed ?? base.speed,
+    pitch: parsed.pitch ?? base.pitch,
+    volume: parsed.volume ?? base.volume,
+  };
+}
+
+function toSceneAudio(row: SceneAudioRow): SceneAudio {
+  return {
+    // Served by the audio route, never a filesystem path.
+    url: `/api/audio/${row.fileName}`,
+    mimeType: row.mimeType,
+    byteSize: row.byteSize,
+    durationSeconds: row.durationSeconds,
+    settings: {
+      language: row.language as VoiceLanguage,
+      voiceId: row.voiceId,
+      speed: row.speed,
+      pitch: row.pitch,
+      volume: row.volume,
+    },
+    voiceName: row.voiceName,
+    provider: row.provider,
+    generatedAt: row.generatedAt.toISOString(),
   };
 }
 
@@ -109,6 +167,7 @@ export function toProjectColumns(project: VideoProject) {
     shortsDurationSeconds: project.shortsDurationSeconds,
     longDurationSeconds: project.longDurationSeconds,
     pipeline: JSON.stringify(project.pipeline),
+    voiceSettings: JSON.stringify(project.voiceSettings),
     createdAt: new Date(project.createdAt),
     updatedAt: new Date(project.updatedAt),
   };

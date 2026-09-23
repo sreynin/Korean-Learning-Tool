@@ -1,3 +1,4 @@
+import { defaultVoiceSettings } from "@/types/voice";
 import {
   CONTENT_STYLES,
   PIPELINE_STAGES,
@@ -247,6 +248,7 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       longDurationSeconds: producesLongForm(spec.format) ? 600 : null,
       lesson: null,
       scenes: null,
+      voiceSettings: defaultVoiceSettings("korean"),
       pipeline: buildPipelineFor(spec.status),
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),

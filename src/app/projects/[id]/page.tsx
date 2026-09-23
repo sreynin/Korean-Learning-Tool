@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { LessonPanel } from "@/components/lesson/lesson-panel";
 import { ScenePanel } from "@/components/scenes/scene-panel";
+import { VoiceSettingsPanel } from "@/components/voice/voice-settings-panel";
 import { DeleteProjectButton } from "@/components/projects/delete-project-button";
 import { PipelineList } from "@/components/projects/pipeline-list";
 import { Alert } from "@/components/ui/alert";
@@ -79,7 +80,7 @@ export default async function ProjectEditorPage({
       </div>
 
       <Alert tone="info" className="mb-6">
-        Lesson and storyboard generation are available. Assets, voice,
+        Lesson, storyboard, and narration generation are available. Assets,
         captions, and rendering are not implemented yet.
       </Alert>
 
@@ -89,6 +90,7 @@ export default async function ProjectEditorPage({
           project={project}
           targetDurationSeconds={storyboardTargetSeconds(project)}
         />
+        <VoiceSettingsPanel project={project} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">

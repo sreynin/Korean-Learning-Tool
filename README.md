@@ -14,7 +14,12 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 5 — the video preview.** What works today:
+**Step 6 — narration generation.** What works today:
+
+- **Per-scene voice generation** with language, voice, speed, pitch and volume
+  settings — play, regenerate, and delete each clip. Audio files live under
+  `data/audio/`; rows reference them
+
 
 - **Browser playback of a storyboard** at the real frame size (1080×1920 or
   1920×1080) with scene animations, transitions, a timeline, and transport
@@ -37,8 +42,8 @@ script, written by the scene generator and consumed by the voice stage.
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** asset generation, voice synthesis, caption
-rendering, final rendering, and the YouTube API. These stages are
+**Not implemented yet:** asset generation, caption rendering, final
+rendering, and the YouTube API. These stages are
 modelled in the data and shown read-only in the project editor so progress is
 visible as each one is built.
 
@@ -105,7 +110,8 @@ All variables are documented in `.env.example`. They are validated at startup by
 | `DATABASE_URL` | No | SQLite file path (default `file:./data/korean-learning-lab.db`) |
 | `AI_API_KEY` | No | Anthropic key for lesson generation. Blank falls back to the mock generator |
 | `AI_MODEL` | No | Model used for generation (default `claude-opus-5`) |
-| `ELEVENLABS_API_KEY` | No | Reserved for voice synthesis |
+| `ELEVENLABS_API_KEY` | No | ElevenLabs key. Blank falls back to the mock voice provider |
+| `ELEVENLABS_MODEL` | No | Voice model (default `eleven_multilingual_v2`) |
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` | No | Reserved for YouTube upload |
 
 The reserved keys are declared so deployment config can be prepared in advance.

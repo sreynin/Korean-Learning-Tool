@@ -1,3 +1,5 @@
+import type { SceneAudio } from "@/types/voice";
+
 /**
  * Storyboard model. A lesson is converted into an ordered list of scenes,
  * each of which becomes one shot in the finished video.
@@ -68,6 +70,8 @@ export interface Scene {
   background: string;
   /** How this scene enters from the previous one. */
   transition: SceneTransition;
+  /** Generated narration audio, or null until it has been generated. */
+  audio: SceneAudio | null;
 }
 
 /** A storyboard as stored on a project, with provenance. */
@@ -81,10 +85,10 @@ export interface StoredScenes {
   editedAt: string | null;
 }
 
-/** What the model returns: `id` and `order` are assigned server-side. */
-export type GeneratedScene = Omit<Scene, "id" | "order">;
+/** What the model returns: `id`, `order`, and `audio` are not its concern. */
+export type GeneratedScene = Omit<Scene, "id" | "order" | "audio">;
 
-export const EMPTY_SCENE: GeneratedScene = {
+export const EMPTY_SCENE: GeneratedScene & { audio: null } = {
   type: "vocabulary",
   duration: 4,
   koreanText: "",
@@ -95,6 +99,7 @@ export const EMPTY_SCENE: GeneratedScene = {
   animation: "fade_in",
   background: "",
   transition: "cut",
+  audio: null,
 };
 
 export function totalSceneDuration(scenes: Scene[]): number {

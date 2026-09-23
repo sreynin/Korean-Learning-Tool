@@ -18,8 +18,11 @@ const serverEnvSchema = z.object({
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().min(1).default("claude-opus-5"),
 
-  // Declared but unused until the matching feature lands.
+  // Voice synthesis. Optional: without a key the mock provider is used.
   ELEVENLABS_API_KEY: z.string().optional(),
+  ELEVENLABS_MODEL: z.string().min(1).default("eleven_multilingual_v2"),
+
+  // Declared but unused until the matching feature lands.
   YOUTUBE_CLIENT_ID: z.string().optional(),
   YOUTUBE_CLIENT_SECRET: z.string().optional(),
 });
@@ -37,6 +40,7 @@ export function getServerEnv(): ServerEnv {
     AI_API_KEY: emptyToUndefined(process.env.AI_API_KEY),
     AI_MODEL: emptyToUndefined(process.env.AI_MODEL),
     ELEVENLABS_API_KEY: emptyToUndefined(process.env.ELEVENLABS_API_KEY),
+    ELEVENLABS_MODEL: emptyToUndefined(process.env.ELEVENLABS_MODEL),
     YOUTUBE_CLIENT_ID: emptyToUndefined(process.env.YOUTUBE_CLIENT_ID),
     YOUTUBE_CLIENT_SECRET: emptyToUndefined(process.env.YOUTUBE_CLIENT_SECRET),
   });

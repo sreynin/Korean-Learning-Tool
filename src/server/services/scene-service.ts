@@ -54,9 +54,15 @@ export function storyboardTargetSeconds(project: VideoProject): number {
  * Attaches a storyboard to a project and marks the pipeline's scenes stage
  * complete. `edited` distinguishes a fresh generation from a manual save.
  */
+/**
+ * Scene audio lives in its own table keyed by scene id, so it is neither sent
+ * by the editor nor written here — it survives a storyboard save untouched.
+ */
+export type SceneInput = Omit<Scene, "audio">;
+
 export async function saveScenes(
   projectId: string,
-  scenes: Scene[],
+  scenes: SceneInput[],
   options: { model: string; edited: boolean },
 ): Promise<VideoProject> {
   const existing = await getProject(projectId);
@@ -64,7 +70,11 @@ export async function saveScenes(
 
   const stored: StoredScenes = {
     // Renumber from array position so `order` can never disagree with it.
-    scenes: scenes.map((scene, index) => ({ ...scene, order: index + 1 })),
+    scenes: scenes.map((scene, index) => ({
+      ...scene,
+      order: index + 1,
+      audio: null,
+    })),
     generatedAt: options.edited ? (existing.scenes?.generatedAt ?? now) : now,
     model: options.edited ? (existing.scenes?.model ?? options.model) : options.model,
     editedAt: options.edited ? now : null,
@@ -92,5 +102,7 @@ function withIdentity(scenes: GeneratedScene[]): Scene[] {
     ...scene,
     id: randomUUID(),
     order: index + 1,
+    // Narration audio is generated later, by the voice stage.
+    audio: null,
   }));
 }

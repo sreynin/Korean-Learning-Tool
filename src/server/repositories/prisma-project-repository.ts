@@ -13,7 +13,7 @@ import type { ProjectListFilters, VideoProject } from "@/types/project";
 /** Everything the domain object needs, in one query. */
 const INCLUDE_RELATIONS = {
   lesson: true,
-  storyboard: { include: { scenes: true } },
+  storyboard: { include: { scenes: { include: { audio: true } } } },
 } as const;
 
 /**
@@ -117,17 +117,33 @@ export class PrismaProjectRepository implements ProjectRepository {
       });
     }
 
-    // Deleting the storyboard cascades to its scenes.
-    await client.storyboard.deleteMany({ where: { projectId: project.id } });
-    if (project.scenes) {
-      await client.storyboard.create({
-        data: {
-          projectId: project.id,
-          ...toStoryboardColumns(project.scenes),
-          scenes: {
-            create: project.scenes.scenes.map(toSceneColumns),
-          },
-        },
+    if (!project.scenes) {
+      // Cascades to scenes and their audio, which is correct here: the
+      // storyboard is gone.
+      await client.storyboard.deleteMany({ where: { projectId: project.id } });
+      return;
+    }
+
+    // Scenes are upserted rather than recreated. Recreating them would cascade
+    // away each scene's generated audio every time anything on the project was
+    // saved — including a lesson edit that never touched the storyboard.
+    const storyboard = await client.storyboard.upsert({
+      where: { projectId: project.id },
+      create: { projectId: project.id, ...toStoryboardColumns(project.scenes) },
+      update: toStoryboardColumns(project.scenes),
+    });
+
+    const keptIds = project.scenes.scenes.map((scene) => scene.id);
+    await client.scene.deleteMany({
+      where: { storyboardId: storyboard.id, id: { notIn: keptIds } },
+    });
+
+    for (const scene of project.scenes.scenes) {
+      const columns = toSceneColumns(scene);
+      await client.scene.upsert({
+        where: { id: scene.id },
+        create: { ...columns, storyboardId: storyboard.id },
+        update: columns,
       });
     }
   }

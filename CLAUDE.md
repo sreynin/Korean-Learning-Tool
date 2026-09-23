@@ -28,7 +28,7 @@ topic → lesson → scenes → assets → voice → captions → preview → re
 ```
 
 All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`,
-`scenes`, and `preview` are implemented.
+`scenes`, `voice`, and `preview` are implemented.
 
 **There is deliberately no "script" stage.** A scene's `narration` field *is*
 the spoken script — the scene generator produces it and the future voice stage
@@ -43,7 +43,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 3 | AI Lesson Generator | **COMPLETE** (see caveat) |
 | 4 | Scene Generator | **COMPLETE** (see caveat) |
 | 5 | Video Preview | **COMPLETE** |
-| 6 | AI Voice | NOT STARTED |
+| 6 | AI Voice | **COMPLETE** (see caveat) |
 | 7 | Captions | NOT STARTED |
 | 8 | Video Rendering | NOT STARTED |
 | 9 | YouTube Metadata | NOT STARTED |
@@ -62,9 +62,9 @@ unproven. Set `AI_API_KEY` and generate once before relying on them.
 filtering and search (built in Step 1). Whatever else "Content Library" covers
 is undefined and unbuilt.
 
-Steps 6, 9, and 11 have environment variables declared (`ELEVENLABS_API_KEY`,
-`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`) but **no code behind them**.
-Declaring a variable is not an implementation.
+Steps 9 and 11 have environment variables declared (`YOUTUBE_CLIENT_ID`,
+`YOUTUBE_CLIENT_SECRET`) but **no code behind them**. Declaring a variable is
+not an implementation.
 
 ## 3. Current Architecture
 
@@ -75,10 +75,11 @@ Declaring a variable is not an implementation.
 | Language | TypeScript 5, `strict: true`, path alias `@/*` → `src/*` |
 | Frontend | React Server Components by default; 10 `"use client"` components |
 | Backend | Next.js route handlers under `src/app/api/`, thin HTTP boundary only |
-| Database | **SQLite** at `data/korean-learning-lab.db` |
+| Database | **SQLite** at `data/korean-learning-lab.db`; generated audio as files under `data/audio/` |
 | ORM | **Prisma 7.10.0** with the `better-sqlite3` driver adapter |
 | Storage | Tables `Project` / `Lesson` / `Storyboard` / `Scene`, behind the `ProjectRepository` interface |
 | AI provider | Anthropic via `@anthropic-ai/sdk` 0.128.0 |
+| Voice provider | ElevenLabs via `fetch`, behind `TextToSpeechProvider` |
 | UI system | Tailwind CSS v4, CSS-first (`@theme inline`), custom primitives in `src/components/ui/` |
 | State management | **No library.** `useState` / `useEffect` + `router.refresh()` |
 | Validation | Zod 4.6.5, on every external boundary |
@@ -137,6 +138,7 @@ src/
 │   ├── create/    create-workflow, create-project-form, generation-progress
 │   ├── lesson/    lesson-panel, lesson-view, lesson-editor
 │   ├── scenes/    scene-panel, scene-card
+│   ├── voice/     voice-settings-panel, scene-audio-controls
 │   ├── preview/   preview-workspace, scene-stage, playback-controls,
 │   │              preview-timeline, scene-properties, use-scene-playback
 │   ├── projects/  project-card, project-grid, project-filters,
@@ -164,8 +166,11 @@ src/
 │   │   ├── scene-prompt.ts              ALL storyboard rules live here
 │   │   ├── anthropic-errors.ts          shared SDK error mapping
 │   │   └── index.ts                     provider selection
+│   ├── tts/           text-to-speech-provider.ts (interface),
+│   │                  elevenlabs-provider.ts, mock-provider.ts,
+│   │                  audio-storage.ts, index.ts (provider selection)
 │   ├── services/      project-service.ts, lesson-service.ts,
-│   │                  scene-service.ts
+│   │                  scene-service.ts, voice-service.ts
 │   ├── db/            client.ts (PrismaClient + driver adapter)
 │   ├── repositories/  project-repository.ts (interface),
 │   │                  prisma-project-repository.ts, project-mapper.ts,
@@ -204,8 +209,12 @@ Schema decisions worth knowing before changing it:
   duplicate them into the schema.
 - `Project.pipeline`, `Lesson.sections`, and `Lesson.quiz` are JSON text. They
   are always read whole and never queried by inner fields.
-- `Scene` **is** a table — scenes are ordered, individually edited, and will
-  carry media references later.
+- `Scene` **is** a table — scenes are ordered, individually edited, and carry
+  media references. `SceneAudio` hangs off it 1:1.
+- **Scenes are upserted, never recreated.** Recreating them would cascade away
+  each scene's generated audio on every project save, including a lesson edit
+  that never touched the storyboard. This is also why `(storyboardId, order)`
+  is not unique: a reorder puts two scenes on the same order for one statement.
 - The mapper (`src/server/repositories/project-mapper.ts`) is the only place
   rows become domain objects. The API shape did not change during the move.
 
@@ -366,6 +375,10 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | PUT | `/api/projects/[id]/lesson` | Save an edited lesson |
 | POST | `/api/projects/[id]/scenes` | Build a storyboard from the saved lesson **and save** |
 | PUT | `/api/projects/[id]/scenes` | Save an edited storyboard |
+| GET | `/api/voices` | Available voices + provider capabilities |
+| PUT | `/api/projects/[id]/voice-settings` | Save project voice settings |
+| POST·DELETE | `/api/projects/[id]/scenes/[sceneId]/audio` | Generate / remove narration |
+| GET | `/api/audio/[fileName]` | Serve a generated clip |
 
 **`GET /api/projects`** — query `status`, `format`, `search`; validated by
 `projectListFiltersSchema`. Returns `VideoProject[]`, newest-updated first.
@@ -543,8 +556,8 @@ Step 2  — Create Video workflow  → COMPLETE
 Step 3  — AI Lesson Generator    → COMPLETE  (live API path unverified)
 Step 4  — Scene Generator        → COMPLETE  (live API path unverified)
 Step 5  — Video Preview          → COMPLETE
-Step 6  — AI Voice               → NEXT
-Step 7  — Captions               → PLANNED
+Step 6  — AI Voice               → COMPLETE (live provider unverified)
+Step 7  — Captions               → NEXT
 Step 8  — Video Rendering        → PLANNED
 Step 9  — YouTube Metadata       → PLANNED
 Step 10 — Content Library        → PLANNED

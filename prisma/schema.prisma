@@ -40,6 +40,9 @@ model Project {
   /// JSON: Record<PipelineStage, { status, updatedAt }>
   pipeline String
 
+  /// JSON: VoiceSettings — language, voice, speed, pitch, volume.
+  voiceSettings String?
+
   createdAt DateTime
   updatedAt DateTime
 
@@ -104,6 +107,36 @@ model Scene {
   background   String
   transition   String
 
-  @@unique([storyboardId, order])
+  audio SceneAudio?
+
+  // Deliberately not unique on (storyboardId, order): scenes are upserted in
+  // place so generated audio survives a storyboard edit, and a reorder puts
+  // two scenes on the same order for one statement. The service renumbers
+  // from array position on every save, which is the real guarantee.
   @@index([storyboardId])
+  @@index([storyboardId, order])
+}
+
+model SceneAudio {
+  id      String @id @default(uuid())
+  sceneId String @unique
+  scene   Scene  @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  /// File name inside the audio directory. Bytes live on disk, not in the row.
+  fileName        String
+  mimeType        String
+  byteSize        Int
+  durationSeconds Float
+
+  /// The settings this clip was rendered with, so the UI can show drift.
+  language  String
+  voiceId   String
+  voiceName String
+  speed     Float
+  pitch     Float
+  volume    Float
+
+  /// "elevenlabs" or "mock".
+  provider    String
+  generatedAt DateTime
 }
