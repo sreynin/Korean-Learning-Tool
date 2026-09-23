@@ -5,6 +5,11 @@ import type { VoiceLanguage, VoiceOption, VoiceSettings } from "@/types/voice";
 import type { CaptionSettings } from "@/types/caption";
 import type { RenderFormat, RenderJob } from "@/types/render";
 import type {
+  MetadataField,
+  MetadataFormat,
+  VideoMetadata,
+} from "@/types/metadata";
+import type {
   CreateProjectInput,
   ProjectListFilters,
   ProjectStats,
@@ -183,6 +188,36 @@ export const api = {
       request<VideoProject>(`/projects/${projectId}/preview-review`, {
         method: "PUT",
         body: JSON.stringify({ reviewed }),
+      }),
+  },
+
+  metadata: {
+    /** Writes the whole document for one cut from the saved lesson. */
+    generate: (projectId: string, format?: MetadataFormat) =>
+      request<VideoProject>(`/projects/${projectId}/metadata`, {
+        method: "POST",
+        body: JSON.stringify({ format }),
+      }),
+
+    /** Rewrites one field, keeping the others. */
+    regenerateField: (
+      projectId: string,
+      field: MetadataField,
+      format?: MetadataFormat,
+    ) =>
+      request<VideoProject>(`/projects/${projectId}/metadata/${field}`, {
+        method: "POST",
+        body: JSON.stringify({ format }),
+      }),
+
+    save: (
+      projectId: string,
+      content: VideoMetadata,
+      format?: MetadataFormat,
+    ) =>
+      request<VideoProject>(`/projects/${projectId}/metadata`, {
+        method: "PUT",
+        body: JSON.stringify({ ...content, format }),
       }),
   },
 

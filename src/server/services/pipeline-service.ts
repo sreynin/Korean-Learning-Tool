@@ -1,6 +1,7 @@
 import { getProjectRepository } from "@/server/repositories";
 import { PIPELINE_STAGES } from "@/types/project";
 import { isActiveRender } from "@/types/render";
+import { metadataFormats } from "@/types/metadata";
 import type { ProjectRepository } from "@/server/repositories";
 import type {
   PipelineStage,
@@ -15,7 +16,7 @@ import type {
  * regardless of what a stored record claims — a project cannot have rendered a
  * video with code that does not exist.
  */
-const UNIMPLEMENTED_STAGES: PipelineStage[] = ["assets", "youtube"];
+const UNIMPLEMENTED_STAGES: PipelineStage[] = ["assets"];
 
 /**
  * Derives every stage's status from what the project actually contains.
@@ -55,7 +56,7 @@ export function reconcilePipeline(
     // Preview completes on an explicit review, never on a page view.
     preview: hasScenes && project.previewReviewedAt ? "complete" : "pending",
     render: deriveRenderStatus(project),
-    youtube: "pending",
+    youtube: deriveMetadataStatus(project),
   };
 
   for (const stage of UNIMPLEMENTED_STAGES) {
@@ -95,6 +96,21 @@ export function reconcilePipeline(
  * earlier successful render still counts, so a failed retry does not erase
  * output that is still on disk.
  */
+/**
+ * Metadata is written per cut, so a `both` project is only done when both its
+ * Short and its long-form video have a document — one of two is genuinely
+ * half-finished, not complete.
+ */
+function deriveMetadataStatus(project: VideoProject): StageStatus {
+  const required = metadataFormats(project.format);
+  const written = required.filter((format) =>
+    project.metadata.some((entry) => entry.format === format),
+  ).length;
+
+  if (written === 0) return "pending";
+  return written === required.length ? "complete" : "in_progress";
+}
+
 function deriveRenderStatus(project: VideoProject): StageStatus {
   const latest = project.latestRender;
 

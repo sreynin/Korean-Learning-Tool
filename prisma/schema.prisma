@@ -56,6 +56,7 @@ model Project {
   lesson      Lesson?
   storyboard  Storyboard?
   renderJobs  RenderJob[]
+  metadata    Metadata[]
 
   @@index([updatedAt])
   @@index([status])
@@ -183,4 +184,33 @@ model RenderJob {
 
   @@index([projectId, createdAt])
   @@index([status])
+}
+
+/// YouTube publishing metadata for one cut of a project.
+///
+/// Keyed by (projectId, format) because a `both` project needs a different
+/// title and description for its Short than for its long-form video.
+model Metadata {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// shorts | long
+  format String
+
+  title         String
+  description   String
+  /// JSON: string[] — hashtags, written with their leading #.
+  hashtags      String
+  /// JSON: string[] — plain keywords.
+  tags          String
+  thumbnailText String
+  pinnedComment String
+
+  generatedAt DateTime
+  /// Model id that produced it, or "mock".
+  model       String
+  editedAt    DateTime?
+
+  @@unique([projectId, format])
 }

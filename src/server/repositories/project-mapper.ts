@@ -1,5 +1,6 @@
 import type {
   Lesson,
+  Metadata as MetadataRow,
   Project,
   RenderJob as RenderJobRow,
   Scene,
@@ -9,6 +10,7 @@ import type {
 import { toDomain as toRenderJob } from "@/server/repositories/render-job-repository";
 import { normalizePipeline } from "@/server/repositories/normalize-project";
 import type { LessonSection, QuizQuestion, StoredLesson } from "@/types/lesson";
+import type { MetadataFormat, StoredMetadata } from "@/types/metadata";
 import type {
   ContentStyle,
   ProficiencyLevel,
@@ -37,6 +39,7 @@ export type ProjectRow = Project & {
   lesson: Lesson | null;
   storyboard: (Storyboard & { scenes: SceneRow[] }) | null;
   renderJobs: RenderJobRow[];
+  metadata: MetadataRow[];
 };
 
 /**
@@ -75,6 +78,7 @@ export function toDomain(row: ProjectRow): VideoProject {
     hasRenderOutput: row.renderJobs.some(
       (job) => job.status === "completed" && job.outputFileName !== null,
     ),
+    metadata: row.metadata.map(toStoredMetadata),
     pipeline: normalizePipeline(parseJson(row.pipeline, {})),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -118,6 +122,23 @@ function toStoredScenes(row: Storyboard & { scenes: SceneRow[] }): StoredScenes 
         highlightTerms: parseJson<string[]>(scene.highlightTerms ?? "", []),
         audio: scene.audio ? toSceneAudio(scene.audio) : null,
       })),
+    generatedAt: row.generatedAt.toISOString(),
+    model: row.model,
+    editedAt: row.editedAt?.toISOString() ?? null,
+  };
+}
+
+function toStoredMetadata(row: MetadataRow): StoredMetadata {
+  return {
+    format: row.format as MetadataFormat,
+    content: {
+      title: row.title,
+      description: row.description,
+      hashtags: parseJson<string[]>(row.hashtags, []),
+      tags: parseJson<string[]>(row.tags, []),
+      thumbnailText: row.thumbnailText,
+      pinnedComment: row.pinnedComment,
+    },
     generatedAt: row.generatedAt.toISOString(),
     model: row.model,
     editedAt: row.editedAt?.toISOString() ?? null,
@@ -195,6 +216,21 @@ export function toProjectColumns(project: VideoProject) {
       : null,
     createdAt: new Date(project.createdAt),
     updatedAt: new Date(project.updatedAt),
+  };
+}
+
+export function toMetadataColumns(stored: StoredMetadata) {
+  return {
+    format: stored.format,
+    title: stored.content.title,
+    description: stored.content.description,
+    hashtags: JSON.stringify(stored.content.hashtags),
+    tags: JSON.stringify(stored.content.tags),
+    thumbnailText: stored.content.thumbnailText,
+    pinnedComment: stored.content.pinnedComment,
+    generatedAt: new Date(stored.generatedAt),
+    model: stored.model,
+    editedAt: stored.editedAt ? new Date(stored.editedAt) : null,
   };
 }
 

@@ -14,7 +14,13 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 8 — video rendering.** What works today:
+**Step 9 — YouTube metadata.** What works today:
+
+- **Title, description, hashtags, tags, thumbnail text, and a pinned comment**,
+  written from the project's own lesson. Every field is editable and has its
+  own Regenerate button, and a `both` project gets a separate document for its
+  Short and its long-form cut
+
 
 - **A real MP4**, encoded with FFmpeg from the storyboard: 1080×1920 for
   Shorts or 1920×1080 for long form, with each scene's Korean, romanization
@@ -54,9 +60,8 @@ script, written by the scene generator and consumed by the voice stage.
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** asset generation and the YouTube API. Both stages are
-modelled in the data and shown read-only in the project editor so progress is
-visible as each one is built.
+**Not implemented yet:** asset generation, and uploading to YouTube. The
+metadata for an upload is written and editable; nothing publishes it yet.
 
 Two things about rendering are worth knowing. Scenes have no imagery yet —
 `visualPrompt` is a prompt, not a picture — so each scene's backdrop is the
@@ -64,9 +69,10 @@ same deterministic gradient the preview draws. And there is no render button:
 start one with `POST /api/projects/:id/renders`, or with
 `npm run render:worker`, and poll the job for progress.
 
-Without an `AI_API_KEY` the app falls back to a mock generator that returns
-clearly-labelled placeholder lessons, so the whole flow works before you have
-credentials.
+Without an `AI_API_KEY` the app falls back to mock generators that return
+clearly-labelled placeholder lessons, storyboards, and metadata, so the whole
+flow works before you have credentials. Nothing they produce should be
+published as written — every field says so.
 
 ## Requirements
 
@@ -137,6 +143,7 @@ All variables are documented in `.env.example`. They are validated at startup by
 | `AI_MODEL` | No | Model used for generation (default `claude-opus-5`) |
 | `ELEVENLABS_API_KEY` | No | ElevenLabs key. Blank falls back to the mock voice provider |
 | `ELEVENLABS_MODEL` | No | Voice model (default `eleven_multilingual_v2`) |
+| `RENDER_FONT_PATH` | No | Font for on-screen text. Blank searches the usual system paths |
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` | No | Reserved for YouTube upload |
 
 The reserved keys are declared so deployment config can be prepared in advance.
@@ -251,6 +258,9 @@ All responses use the envelope described above.
 | `GET` | `/api/projects/:id/renders` | List a project's render jobs |
 | `GET` | `/api/projects/:id/renders/:jobId` | Poll one job's status and progress |
 | `GET` | `/api/renders/:fileName` | Serve a finished render |
+| `POST` | `/api/projects/:id/metadata` | Write YouTube metadata for one cut |
+| `PUT` | `/api/projects/:id/metadata` | Save edited metadata |
+| `POST` | `/api/projects/:id/metadata/:field` | Rewrite one field, keeping the rest |
 
 ```bash
 curl -X POST localhost:3000/api/projects -H 'Content-Type: application/json' -d '{"topic":"Korean Numbers 1-10","format":"shorts","level":"beginner","targetLanguage":"korean","contentStyle":"vocabulary","visualStyle":"clean_educational","shortsDurationSeconds":30}'
@@ -300,7 +310,8 @@ Primitives live in `src/components/ui/`: `Button`, `Card`, `Badge`, `Alert`,
    gradient backdrops. The renderer takes one background input per scene, so
    this is the change it was shaped around.
 2. **A render panel**, with a button, live progress, and a link to the file.
-3. **Move generation onto the job mechanism.** Lesson, scene, and voice
-   generation still run inside the request; the render job shows the shape
-   they should take.
-4. **Authentication**, once there is more than one user.
+3. **Publishing**, which is what the metadata is for.
+4. **Move generation onto the job mechanism.** Lesson, scene, metadata, and
+   voice generation still run inside the request; the render job shows the
+   shape they should take.
+5. **Authentication**, once there is more than one user.

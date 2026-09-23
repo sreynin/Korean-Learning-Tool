@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { LessonPanel } from "@/components/lesson/lesson-panel";
+import { MetadataPanel } from "@/components/metadata/metadata-panel";
 import { ScenePanel } from "@/components/scenes/scene-panel";
 import { CaptionSettingsPanel } from "@/components/captions/caption-settings-panel";
 import { VoiceSettingsPanel } from "@/components/voice/voice-settings-panel";
@@ -81,8 +82,8 @@ export default async function ProjectEditorPage({
       </div>
 
       <Alert tone="info" className="mb-6">
-        Lesson, storyboard, captions, narration, and MP4 rendering are
-        available. Rendering is started through the API or{" "}
+        Lesson, storyboard, captions, narration, YouTube metadata, and MP4
+        rendering are available. Rendering is started through the API or{" "}
         <code>npm run render:worker</code> — it has no button here yet. Asset
         generation is not implemented.
       </Alert>
@@ -95,6 +96,7 @@ export default async function ProjectEditorPage({
         />
         <CaptionSettingsPanel project={project} />
         <VoiceSettingsPanel project={project} />
+        <MetadataPanel project={project} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">

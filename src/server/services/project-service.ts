@@ -70,6 +70,7 @@ export async function createProject(
     previewReviewedAt: null,
     latestRender: null,
     hasRenderOutput: false,
+    metadata: [],
     voiceSettings: defaultVoiceSettings(
       input.targetLanguage === "korean" ? "korean" : "english",
     ),

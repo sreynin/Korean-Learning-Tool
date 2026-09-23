@@ -1,9 +1,12 @@
 import { getServerEnv } from "@/lib/env";
 import { AnthropicLessonGenerator } from "@/server/ai/anthropic-lesson-generator";
+import { AnthropicMetadataGenerator } from "@/server/ai/anthropic-metadata-generator";
 import { AnthropicSceneGenerator } from "@/server/ai/anthropic-scene-generator";
 import { MockLessonGenerator } from "@/server/ai/mock-lesson-generator";
+import { MockMetadataGenerator } from "@/server/ai/mock-metadata-generator";
 import { MockSceneGenerator } from "@/server/ai/mock-scene-generator";
 import type { LessonGenerator } from "@/server/ai/lesson-generator";
+import type { MetadataGenerator } from "@/server/ai/metadata-generator";
 import type { SceneGenerator } from "@/server/ai/scene-generator";
 
 /**
@@ -14,6 +17,7 @@ import type { SceneGenerator } from "@/server/ai/scene-generator";
 const globalForAi = globalThis as unknown as {
   __lessonGenerator?: LessonGenerator;
   __sceneGenerator?: SceneGenerator;
+  __metadataGenerator?: MetadataGenerator;
 };
 
 export function getLessonGenerator(): LessonGenerator {
@@ -46,4 +50,19 @@ export function getSceneGenerator(): SceneGenerator {
   return globalForAi.__sceneGenerator;
 }
 
-export type { LessonGenerator, SceneGenerator };
+export function getMetadataGenerator(): MetadataGenerator {
+  if (!globalForAi.__metadataGenerator) {
+    const env = getServerEnv();
+
+    globalForAi.__metadataGenerator = env.AI_API_KEY
+      ? new AnthropicMetadataGenerator({
+          apiKey: env.AI_API_KEY,
+          model: env.AI_MODEL,
+        })
+      : new MockMetadataGenerator();
+  }
+
+  return globalForAi.__metadataGenerator;
+}
+
+export type { LessonGenerator, MetadataGenerator, SceneGenerator };

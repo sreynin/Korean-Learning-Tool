@@ -41,6 +41,7 @@ export function makeProject(overrides: Partial<VideoProject> = {}): VideoProject
     previewReviewedAt: null,
     latestRender: null,
     hasRenderOutput: false,
+    metadata: [],
     pipeline: emptyPipeline(),
     createdAt: now,
     updatedAt: now,

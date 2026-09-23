@@ -1,4 +1,5 @@
 import type { StoredLesson } from "@/types/lesson";
+import type { StoredMetadata } from "@/types/metadata";
 import type { StoredScenes } from "@/types/scene";
 import type { VoiceSettings } from "@/types/voice";
 import type { CaptionSettings } from "@/types/caption";
@@ -122,6 +123,8 @@ export interface VideoProject {
   latestRender: RenderJob | null;
   /** True once any render has completed with an output file. */
   hasRenderOutput: boolean;
+  /** YouTube metadata, at most one document per cut the project produces. */
+  metadata: StoredMetadata[];
   pipeline: ProjectPipeline;
   /** ISO 8601 */
   createdAt: string;

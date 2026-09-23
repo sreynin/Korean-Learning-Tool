@@ -36,6 +36,7 @@ async function main() {
         lesson: true,
         storyboard: { include: { scenes: { include: { audio: true } } } },
         renderJobs: { orderBy: { createdAt: "desc" } },
+        metadata: true,
       },
     });
 

@@ -204,7 +204,8 @@ export const STAGE_META: Record<
   },
   youtube: {
     label: "YouTube metadata",
-    description: "Title, description, tags, and thumbnail.",
-    implemented: false,
+    description:
+      "Title, description, hashtags, tags, thumbnail text, and a pinned comment.",
+    implemented: true,
   },
 };

@@ -27,8 +27,8 @@ The intended production pipeline is:
 topic → lesson → scenes → assets → voice → captions → preview → render → youtube
 ```
 
-All nine stages exist as data in `PIPELINE_STAGES`. `topic`, `lesson`,
-`scenes`, `voice`, `captions`, `preview`, and `render` are implemented.
+All nine stages exist as data in `PIPELINE_STAGES`. Everything except
+`assets` is implemented.
 
 **There is deliberately no "script" stage.** A scene's `narration` field *is*
 the spoken script — the scene generator produces it and the future voice stage
@@ -46,7 +46,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 6 | AI Voice | **COMPLETE** (see caveat) |
 | 7 | Captions | **COMPLETE** |
 | 8 | Video Rendering | **COMPLETE** (see caveat) |
-| 9 | YouTube Metadata | NOT STARTED |
+| 9 | YouTube Metadata | **COMPLETE** (live AI path unverified) |
 | 10 | Content Library | NOT STARTED |
 | 11 | YouTube Publishing | NOT STARTED |
 | 12 | Production Readiness | NOT STARTED |
@@ -73,9 +73,11 @@ seeded projects. Two things are deliberately missing:
 filtering and search (built in Step 1). Whatever else "Content Library" covers
 is undefined and unbuilt.
 
-Steps 9 and 11 have environment variables declared (`YOUTUBE_CLIENT_ID`,
-`YOUTUBE_CLIENT_SECRET`) but **no code behind them**. Declaring a variable is
-not an implementation.
+**Step 9 caveat — written, never published.** The metadata is generated,
+editable, and stored, but nothing uploads it: `YOUTUBE_CLIENT_ID` and
+`YOUTUBE_CLIENT_SECRET` are declared with **no code behind them**, and
+Step 11 is where publishing lands. The thumbnail is text only — image
+generation belongs to the assets stage.
 
 ## 3. Current Architecture
 
@@ -152,6 +154,7 @@ src/
 │   ├── scenes/    scene-panel, scene-card
 │   ├── voice/     voice-settings-panel, scene-audio-controls
 │   ├── captions/  caption-settings-panel
+│   ├── metadata/  metadata-panel
 │   ├── preview/   preview-workspace, scene-stage, playback-controls,
 │   │              preview-timeline, scene-properties, use-scene-playback
 │   ├── projects/  project-card, project-grid, project-filters,
@@ -177,6 +180,11 @@ src/
 │   │   ├── mock-scene-generator.ts
 │   │   ├── scene-schema.ts              output + edit schemas
 │   │   ├── scene-prompt.ts              ALL storyboard rules live here
+│   │   ├── metadata-generator.ts        the MetadataGenerator interface
+│   │   ├── anthropic-metadata-generator.ts
+│   │   ├── mock-metadata-generator.ts
+│   │   ├── metadata-schema.ts           output + edit schemas + clamping
+│   │   ├── metadata-prompt.ts           ALL metadata rules live here
 │   │   ├── anthropic-errors.ts          shared SDK error mapping
 │   │   └── index.ts                     provider selection
 │   ├── tts/           text-to-speech-provider.ts (interface),
@@ -190,7 +198,7 @@ src/
 │   ├── services/      project-service.ts, lesson-service.ts,
 │   │                  scene-service.ts, voice-service.ts,
 │   │                  caption-service.ts, pipeline-service.ts,
-│   │                  render-service.ts
+│   │                  render-service.ts, metadata-service.ts
 │   ├── db/            client.ts (PrismaClient + driver adapter)
 │   ├── repositories/  project-repository.ts (interface),
 │   │                  prisma-project-repository.ts, project-mapper.ts,
@@ -202,7 +210,7 @@ src/
 │   └── http.ts        route() wrapper, parseJsonBody()
 │
 └── types/  project.ts, lesson.ts, scene.ts, voice.ts, caption.ts,
-            render.ts, api.ts
+            render.ts, metadata.ts, api.ts
 
 prisma/schema.prisma          database schema
 prisma/migrations/            versioned migrations (committed)
@@ -297,7 +305,7 @@ Use them; do not compare format strings inline.
 
 `PIPELINE_STAGES` = `topic, lesson, scenes, assets, voice, captions, preview,
 render, youtube`. `STAGE_META[stage].implemented` gates the UI — everything
-except `assets` and `youtube` is `true`.
+except `assets` is `true`.
 
 **Stage status is derived, never set.** `reconcilePipeline()` in
 `src/server/services/pipeline-service.ts` computes every stage from what the
@@ -318,8 +326,10 @@ The rules:
   `pending`, an active job is `in_progress`, and a job that produced output is
   `complete`. Creating a job never completes the stage, and a failed retry
   cannot erase an earlier render that is still on disk.
-- `assets` and `youtube` are forced to `pending` — they have no
-  implementation, so no stored value may claim otherwise.
+- `youtube` completes when every cut the project produces has metadata. A
+  `both` project with only its Short written is `in_progress`, not complete.
+- `assets` is forced to `pending` — it has no implementation, so no stored
+  value may claim otherwise.
 
 Deleting an artifact reverts its stage. Run `npm run db:repair-pipeline` after
 changing these rules to bring existing rows in line.
@@ -444,6 +454,43 @@ A `both` project renders one job per cut, so `format` lives on the job. The
 output is named after the job id, which makes every file traceable and means
 no render can overwrite another.
 
+### VideoMetadata — `src/types/metadata.ts`
+
+```ts
+interface VideoMetadata {
+  title: string;          // ≤100 chars
+  description: string;    // ≤5000
+  hashtags: string[];     // written with their leading #, ≤6
+  tags: string[];         // plain keywords, ≤15, ≤500 chars together
+  thumbnailText: string;  // ≤30 chars, so it stays readable
+  pinnedComment: string;  // ≤500
+}
+
+interface StoredMetadata {
+  format: MetadataFormat; // "shorts" | "long"
+  content: VideoMetadata;
+  generatedAt: string;
+  model: string;
+  editedAt: string | null;
+}
+```
+
+**Metadata is stored per cut**, in its own table keyed by
+`(projectId, format)`. A Short and a long-form video of the same lesson want
+different titles — the Short ends with `#Shorts`, the long one is descriptive
+and searchable — so a `both` project carries one document for each. That is
+also why the `youtube` stage is only complete when every cut has one.
+
+Every field can be regenerated on its own. `generateField` exists on the
+generator interface for that reason: rewriting a title by regenerating the
+whole document would throw away five good values and cost five times as much.
+The other fields go to the model as context so the replacement fits them.
+
+`clampMetadata()` trims a generation into the limits instead of rejecting it —
+a title cut to 100 characters is something the creator can edit, a failed
+generation is not. Its output always satisfies `metadataEditSchema`, the
+strict schema a human save must pass.
+
 ### How a render runs — `src/server/render/`
 
 ```
@@ -504,6 +551,9 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | PUT | `/api/projects/[id]/caption-settings` | Save caption presentation settings |
 | POST·DELETE | `/api/projects/[id]/scenes/[sceneId]/audio` | Generate / remove narration |
 | GET | `/api/audio/[fileName]` | Serve a generated clip |
+| POST | `/api/projects/[id]/metadata` | Write YouTube metadata for one cut |
+| PUT | `/api/projects/[id]/metadata` | Save edited metadata |
+| POST | `/api/projects/[id]/metadata/[field]` | Rewrite one field, keeping the rest |
 | POST | `/api/projects/[id]/renders` | Create a render job and return immediately |
 | GET | `/api/projects/[id]/renders` | List a project's render jobs |
 | GET | `/api/projects/[id]/renders/[jobId]` | Poll one job's status and progress |
@@ -563,15 +613,15 @@ with no stack leaked to the client.
 ## 7. AI Architecture
 
 **Provider selection** — `src/server/ai/index.ts` exposes
-`getLessonGenerator()` and `getSceneGenerator()`. Each returns the Anthropic
-implementation when `AI_API_KEY` is set, otherwise the mock. Cached on
-`globalThis` to survive hot reloads. Services depend only on the
-`LessonGenerator` / `SceneGenerator` interfaces.
+`getLessonGenerator()`, `getSceneGenerator()`, and `getMetadataGenerator()`.
+Each returns the Anthropic implementation when `AI_API_KEY` is set, otherwise
+the mock. Cached on `globalThis` to survive hot reloads. Services depend only
+on the interfaces.
 
-**Two generators, one pattern.** Lessons are generated from the project's
-configuration; storyboards are generated from the saved **lesson**. Both share
-`src/server/ai/anthropic-errors.ts` (`toAppError`, `stopReasonError`) — add
-error cases there, not in a provider.
+**Three generators, one pattern.** Lessons come from the project's
+configuration; storyboards and YouTube metadata both come from the saved
+**lesson**. All three share `src/server/ai/anthropic-errors.ts` (`toAppError`,
+`stopReasonError`) — add error cases there, not in a provider.
 
 **Prompt structure** — all in `src/server/ai/prompt.ts`:
 
@@ -590,8 +640,14 @@ quiz→answer pairing, the on-screen-text vs narration split, narration pacing
 (~3 English words or 2 Korean syllables per second), an exact duration budget,
 and visual-prompt style per `visualStyle`.
 
-**Quality changes belong in `prompt.ts` / `scene-prompt.ts`**, never in a
-provider, a service, or a route.
+`src/server/ai/metadata-prompt.ts` is the equivalent for YouTube metadata: 10
+rules covering accuracy to the real lesson, **no claims about views,
+virality, or the algorithm**, no clickbait the video does not honour, the
+per-field limits, and the title style for each cut — `#Shorts` on a Short, a
+descriptive `Topic | Korean for Beginners` on a long-form video.
+
+**Quality changes belong in `prompt.ts` / `scene-prompt.ts` /
+`metadata-prompt.ts`**, never in a provider, a service, or a route.
 
 **Structured output** — `client.messages.parse()` with
 `zodOutputFormat(lessonSchema)`. The response is schema-validated by the API,
@@ -699,8 +755,8 @@ Step 5  — Video Preview          → COMPLETE
 Step 6  — AI Voice               → COMPLETE (live provider unverified)
 Step 7  — Captions               → COMPLETE
 Step 8  — Video Rendering        → COMPLETE (placeholder visuals, no button)
-Step 9  — YouTube Metadata       → NEXT
-Step 10 — Content Library        → PLANNED
+Step 9  — YouTube Metadata       → COMPLETE (live API path unverified)
+Step 10 — Content Library        → NEXT
 Step 11 — YouTube Publishing     → PLANNED
 Step 12 — Production Readiness   → PLANNED
 ```
@@ -713,7 +769,8 @@ trade-offs that now have an expiry date.
 1. **All work is uncommitted.** Git holds exactly one commit
    (`Initial commit from Create Next App`). Steps 1–3 exist only in the working
    tree. This is the highest-risk issue in the repository.
-2. **The live AI path has never executed** for either generator. See §2.
+2. **The live AI path has never executed** for any of the three generators —
+   lesson, scene, or metadata. See §2.
 3. **SQLite is single-writer and local-file.** Fine for one creator on one
    machine, which is the current situation. It is not suitable for concurrent
    users or a serverless deployment; moving to Postgres is a Prisma provider

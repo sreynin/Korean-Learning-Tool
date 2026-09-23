@@ -39,6 +39,7 @@ export function normalizeProject(raw: VideoProject): VideoProject {
     previewReviewedAt: project.previewReviewedAt ?? null,
     latestRender: project.latestRender ?? null,
     hasRenderOutput: project.hasRenderOutput ?? false,
+    metadata: project.metadata ?? [],
     voiceSettings:
       project.voiceSettings ??
       defaultVoiceSettings(project.targetLanguage === "korean" ? "korean" : "english"),

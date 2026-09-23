@@ -5,6 +5,7 @@ import {
   toLessonColumns,
   toProjectColumns,
   toSceneColumns,
+  toMetadataColumns,
   toStoryboardColumns,
 } from "@/server/repositories/project-mapper";
 import type { ProjectRepository } from "@/server/repositories/project-repository";
@@ -16,6 +17,7 @@ const INCLUDE_RELATIONS = {
   storyboard: { include: { scenes: { include: { audio: true } } } },
   // Newest first, so the mapper can take the latest without another query.
   renderJobs: { orderBy: { createdAt: "desc" } },
+  metadata: true,
 } as const;
 
 /**
@@ -112,6 +114,20 @@ export class PrismaProjectRepository implements ProjectRepository {
     project: VideoProject,
     client: PrismaTransaction = this.db,
   ): Promise<void> {
+    // Metadata is upserted per cut: a project carries at most one document per
+    // format, and regenerating the Short's title must not disturb the
+    // long-form one.
+    for (const stored of project.metadata) {
+      const columns = toMetadataColumns(stored);
+      await client.metadata.upsert({
+        where: {
+          projectId_format: { projectId: project.id, format: stored.format },
+        },
+        create: { projectId: project.id, ...columns },
+        update: columns,
+      });
+    }
+
     await client.lesson.deleteMany({ where: { projectId: project.id } });
     if (project.lesson) {
       await client.lesson.create({

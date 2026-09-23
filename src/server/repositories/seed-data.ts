@@ -255,6 +255,7 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       previewReviewedAt: null,
       latestRender: null,
       hasRenderOutput: false,
+      metadata: [],
       pipeline: buildSeedPipeline(),
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),
