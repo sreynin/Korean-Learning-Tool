@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/layout/page-header";
+import { YouTubeConnectionCard } from "@/components/publish/youtube-connection-card";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { getFeatureAvailability, getServerEnv } from "@/lib/env";
 import { listProjects } from "@/server/services/project-service";
+import { getPublishCapability } from "@/server/services/publish-service";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -13,10 +15,14 @@ export const metadata: Metadata = {
 // Reads runtime environment, which differs from the build environment.
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: PageProps<"/settings">) {
   const env = getServerEnv();
   const features = getFeatureAvailability();
   const projectCount = (await listProjects()).length;
+  const publishCapability = await getPublishCapability();
+  const notice = toNotice(await searchParams);
 
   const integrations = [
     {
@@ -34,6 +40,11 @@ export default async function SettingsPage() {
       variable: "YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET",
       configured: features.youtubeUpload,
     },
+    {
+      name: "YouTube token encryption",
+      variable: "YOUTUBE_TOKEN_KEY",
+      configured: features.youtubeTokenEncryption,
+    },
   ];
 
   return (
@@ -47,6 +58,11 @@ export default async function SettingsPage() {
         Settings are read from environment variables. Edit <code>.env.local</code>{" "}
         and restart the dev server to change them.
       </Alert>
+
+      <YouTubeConnectionCard
+        capability={publishCapability}
+        notice={notice}
+      />
 
       <Card className="mb-6">
         <CardContent>
@@ -80,9 +96,10 @@ export default async function SettingsPage() {
           </ul>
 
           <p className="mt-4 text-sm text-foreground-muted">
-            Lesson generation works without a key by falling back to a mock
-            generator that returns clearly-labelled sample content. Voice and
-            YouTube are not implemented yet, so their keys do nothing.
+            Every integration falls back to a mock that returns
+            clearly-labelled placeholder content, so the whole flow works
+            before you have credentials. A mock upload puts nothing on YouTube
+            and says so in its result.
           </p>
         </CardContent>
       </Card>
@@ -108,4 +125,34 @@ export default async function SettingsPage() {
       </Card>
     </div>
   );
+}
+
+/**
+ * The OAuth callback redirects here with its outcome in the query string.
+ *
+ * Only ever a short message the callback wrote, never anything from the
+ * token exchange.
+ */
+function toNotice(
+  params: Record<string, string | string[] | undefined>,
+): { tone: "success" | "danger"; message: string } | undefined {
+  const outcome = first(params.youtube);
+
+  if (outcome === "connected") {
+    return { tone: "success", message: "YouTube account connected." };
+  }
+
+  if (outcome === "error") {
+    return {
+      tone: "danger",
+      message: first(params.message) ?? "The connection could not be completed.",
+    };
+  }
+
+  return undefined;
+}
+
+function first(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && raw.length > 0 ? raw : undefined;
 }

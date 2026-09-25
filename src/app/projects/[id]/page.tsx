@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { LessonPanel } from "@/components/lesson/lesson-panel";
 import { MetadataPanel } from "@/components/metadata/metadata-panel";
+import { PublishPanel } from "@/components/publish/publish-panel";
 import { ScenePanel } from "@/components/scenes/scene-panel";
 import { CaptionSettingsPanel } from "@/components/captions/caption-settings-panel";
 import { VoiceSettingsPanel } from "@/components/voice/voice-settings-panel";
@@ -29,7 +30,13 @@ import {
 } from "@/lib/utils/project";
 import { isAppError } from "@/server/errors";
 import { getProject } from "@/server/services/project-service";
+import {
+  defaultPublishSettings,
+  getPublishCapability,
+} from "@/server/services/publish-service";
 import { storyboardTargetSeconds } from "@/server/services/scene-service";
+import { metadataFormats } from "@/types/metadata";
+import type { PublishSettings } from "@/types/youtube";
 import type { VideoProject } from "@/types/project";
 
 export async function generateMetadata({
@@ -52,6 +59,18 @@ export default async function ProjectEditorPage({
 
   const format = FORMAT_META[project.format];
   const status = STATUS_META[project.status];
+
+  // Read through the service layer, not over HTTP — this is a server
+  // component. The capability says what this installation can do; the
+  // defaults are starting values the creator can change before anything is
+  // sent, computed here so the panel never has to guess.
+  const publishCapability = await getPublishCapability();
+  const publishDefaults = Object.fromEntries(
+    metadataFormats(project.format).map((cut) => [
+      cut,
+      defaultPublishSettings(project, cut),
+    ]),
+  ) as Record<string, PublishSettings>;
   const completedStages = countCompletedStages(project);
   const hasScenes = (project.scenes?.scenes.length ?? 0) > 0;
 
@@ -97,6 +116,11 @@ export default async function ProjectEditorPage({
         <CaptionSettingsPanel project={project} />
         <VoiceSettingsPanel project={project} />
         <MetadataPanel project={project} />
+        <PublishPanel
+          project={project}
+          defaults={publishDefaults}
+          capability={publishCapability}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">

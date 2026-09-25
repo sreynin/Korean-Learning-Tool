@@ -48,7 +48,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 8 | Video Rendering | **COMPLETE** (see caveat) |
 | 9 | YouTube Metadata | **COMPLETE** (live AI path unverified) |
 | 10 | Content Library | **COMPLETE** |
-| 11 | YouTube Publishing | NOT STARTED |
+| 11 | YouTube Publishing | **COMPLETE** (live OAuth + upload unverified) |
 | 12 | Production Readiness | NOT STARTED |
 
 **Steps 3 and 4 caveat — the live AI path has never been executed.** No
@@ -74,9 +74,17 @@ Every card action runs against real data: Duplicate copies the lesson and
 storyboard, Render starts a real job, Export downloads the encoded MP4 and
 copies the stored metadata, Delete removes the project and its media.
 **Mark published records what the creator did by hand** — it writes
-`publishedAt` and an optional link, and uploads nothing. Step 11 is where
-YouTube upload lands, and until then `published` is a bookkeeping status, not
-evidence that a video exists on YouTube.
+`publishedAt` and an optional link, and uploads nothing. Since Step 11 a real
+upload writes the same two fields, so `published` now means either "this app
+uploaded it" or "the creator said so". The publish job says which.
+
+**Step 11 caveat — the live path has never run.** No Google Cloud project or
+YouTube channel was available, so only `MockYouTubeClient` was exercised end to
+end. OAuth, the resumable upload, and the processing poll are written against
+the documented API and have never made a real call. The redirect URL, scopes,
+and CSRF handling were verified; the code exchange and upload were not. Set
+`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_TOKEN_KEY`, connect
+a channel, and publish one **private** video before trusting it.
 
 **Step 9 caveat — written, never published.** The metadata is generated,
 editable, and stored, but nothing uploads it: `YOUTUBE_CLIENT_ID` and
@@ -98,6 +106,7 @@ generation belongs to the assets stage.
 | Storage | Tables `Project` / `Lesson` / `Storyboard` / `Scene`, behind the `ProjectRepository` interface |
 | AI provider | Anthropic via `@anthropic-ai/sdk` 0.128.0 |
 | Voice provider | ElevenLabs via `fetch`, behind `TextToSpeechProvider` |
+| Publishing | YouTube Data API v3 via `fetch`, behind `YouTubeClient`; Google OAuth 2.0 |
 | Renderer | FFmpeg (`ffmpeg-static` binary, system FFmpeg preferred), behind `Renderer` |
 | UI system | Tailwind CSS v4, CSS-first (`@theme inline`), custom primitives in `src/components/ui/` |
 | State management | **No library.** `useState` / `useEffect` + `router.refresh()` |
@@ -160,6 +169,7 @@ src/
 │   ├── voice/     voice-settings-panel, scene-audio-controls
 │   ├── captions/  caption-settings-panel
 │   ├── metadata/  metadata-panel
+│   ├── publish/   publish-panel, youtube-connection-card
 │   ├── preview/   preview-workspace, scene-stage, playback-controls,
 │   │              preview-timeline, scene-properties, use-scene-playback
 │   ├── projects/  project-card, project-grid, project-filters,
@@ -196,6 +206,12 @@ src/
 │   ├── tts/           text-to-speech-provider.ts (interface),
 │   │                  elevenlabs-provider.ts, mock-provider.ts,
 │   │                  audio-storage.ts, index.ts (provider selection)
+│   ├── youtube/       youtube-client.ts (interface),
+│   │                  google-youtube-client.ts, mock-youtube-client.ts,
+│   │                  oauth.ts (Google OAuth 2.0),
+│   │                  token-store.ts (AES-256-GCM at rest),
+│   │                  publish-queue.ts (PublishQueue + runPublishJob),
+│   │                  index.ts (composition point + token refresh)
 │   ├── render/        renderer.ts (interface), ffmpeg-renderer.ts,
 │   │                  frame-layout.ts (pure text/gradient geometry),
 │   │                  ffmpeg.ts (binary resolution + process boundary),
@@ -204,19 +220,21 @@ src/
 │   ├── services/      project-service.ts, library-service.ts, lesson-service.ts,
 │   │                  scene-service.ts, voice-service.ts,
 │   │                  caption-service.ts, pipeline-service.ts,
-│   │                  render-service.ts, metadata-service.ts
+│   │                  render-service.ts, metadata-service.ts,
+│   │                  publish-service.ts
 │   ├── db/            client.ts (PrismaClient + driver adapter)
 │   ├── repositories/  project-repository.ts (interface),
 │   │                  prisma-project-repository.ts, project-mapper.ts,
 │   │                  normalize-project.ts, seed-data.ts,
-│   │                  render-job-repository.ts,
+│   │                  render-job-repository.ts, publish-job-repository.ts,
+│   │                  youtube-account-repository.ts,
 │   │                  index.ts (composition point)
-│   ├── validation/    project-schemas.ts
+│   ├── validation/    project-schemas.ts, publish-schemas.ts
 │   ├── errors.ts      AppError hierarchy
 │   └── http.ts        route() wrapper, parseJsonBody()
 │
 └── types/  project.ts, lesson.ts, scene.ts, voice.ts, caption.ts,
-            render.ts, metadata.ts, api.ts
+            render.ts, metadata.ts, youtube.ts, api.ts
 
 prisma/schema.prisma          database schema
 prisma/migrations/            versioned migrations (committed)
@@ -325,8 +343,11 @@ chosen), `voice_ready` (every scene voiced), `scenes_ready`, `lesson_ready`,
 `draft`. The eight statuses are the library's filter list, so a card's badge
 and the chip that finds it are computed from one function.
 
-`published` is the only one a human sets, and it is a bookkeeping flag — see
-the Step 10 caveat in §2.
+`published` is the only one not inferred from the project's own content. It
+follows `publishedAt`, which is written either by a finished upload (Step 11)
+or by the creator recording a publish they did by hand. A *failed* upload
+writes nothing — a project must never look published because an upload was
+attempted.
 
 **Stage status is derived, never set.** `reconcilePipeline()` in
 `src/server/services/pipeline-service.ts` computes every stage from what the
@@ -541,6 +562,50 @@ POST /renders → job row → queue → runRenderJob → FfmpegRenderer → MP4
   the scratch directory is removed in a `finally`, so a cancelled or failed
   render leaves no partial file and never reports completion.
 
+### How a publish runs — `src/server/youtube/`
+
+```
+POST /publish-jobs → job row → queue → runPublishJob → YouTubeClient → video
+```
+
+- **Same job model as a render**, for the same reason: an upload outlives the
+  request. The row is the contract, so moving to a real queue or a separate
+  worker is one new `PublishQueue` implementation.
+- **The video id is written the moment the upload returns**, before the
+  processing poll and before the thumbnail. Once bytes reach YouTube a video
+  exists whether this job survives or not, and a crash after that point must
+  still leave a row saying which video it created.
+- **Nothing retries automatically.** A retried upload is a *second video* on
+  the channel, not a second attempt at the first one. Retrying is the
+  creator's decision, from the form.
+- **A rejected video fails the job but keeps its id**, because the creator
+  needs it to find and delete the upload.
+- **A thumbnail refusal warns instead of failing.** Custom thumbnails need a
+  verified channel; the video is already up by then, and losing the publish
+  over a thumbnail would be worse than saying so.
+- **The source file is resolved from a completed render job**, never from the
+  request, so a publish cannot upload a file this app did not produce.
+
+### OAuth and token storage
+
+The app never sees a YouTube password: sign-in happens on Google's own page and
+what returns is a one-time code, exchanged server-side.
+
+- **Tokens are encrypted at rest** with AES-256-GCM (`node:crypto`), keyed by
+  `YOUTUBE_TOKEN_KEY`. GCM authenticates as well as encrypts, so a tampered row
+  fails to decrypt rather than decrypting to something else, and each value
+  gets a fresh IV.
+- **There is no plaintext fallback.** With no key, connecting is refused —
+  `/api/youtube/auth` 409s before the redirect. Writing a credential in the
+  clear because configuration was incomplete is the failure the file exists to
+  prevent.
+- **`state` is signed with the same key** and mirrored into an httpOnly cookie;
+  the callback requires both, compared in constant time.
+- Scopes are `youtube.upload` and `youtube.readonly` — enough to insert a video
+  and name the channel, not enough to delete one.
+- Tokens are decrypted only inside `YouTubeAccountRepository`. No API route
+  returns one, and `PublishCapability` has no field that could hold one.
+
 ## 6. API Endpoints
 
 Every response uses the envelope in `src/types/api.ts`:
@@ -583,6 +648,13 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | GET | `/api/projects/[id]/renders/[jobId]` | Poll one job's status and progress |
 | GET | `/api/renders/[fileName]` | Serve a finished render (`video/mp4`, range requests) |
 | PUT | `/api/projects/[id]/preview-review` | Record that the preview was reviewed |
+| GET | `/api/youtube/connection` | The connected channel, and what this install can do |
+| DELETE | `/api/youtube/connection` | Revoke the grant with Google and forget the token |
+| GET | `/api/youtube/auth` | Redirect to Google's consent screen |
+| GET | `/api/youtube/callback` | Where Google returns; exchanges the code and stores tokens |
+| POST | `/api/projects/[id]/publish-jobs` | Upload one cut to YouTube |
+| GET | `/api/projects/[id]/publish-jobs` | List a project's publish attempts |
+| GET | `/api/projects/[id]/publish-jobs/[jobId]` | Poll one upload's status and progress |
 
 **`GET /api/projects`** — query `status`, `format`, `level`, `search`;
 validated by `projectListFiltersSchema`. Returns `VideoProject[]`,
@@ -641,6 +713,30 @@ server-side, sets `pipeline.scenes` to `complete`, moves `status`
 `storyboardEditSchema` (1–120 scenes, narration required, duration 1–60).
 `order` is renumbered from array position, so reordering is just array order.
 Preserves the original `generatedAt`/`model` and sets `editedAt`.
+
+**`POST /api/projects/[id]/publish-jobs`** — body is the whole publish form
+(`publishSettingsSchema`) plus an optional `format` and a required
+`confirm: true`. Returns 201 with the job and the project. **No
+`maxDuration`** — the route creates the job and returns; the upload runs on
+the queue.
+
+`confirm` is what makes "never publish without an explicit user action"
+enforceable rather than a convention: a settings object alone could be sent by
+a replayed fetch or a double-bound handler, and this cannot be sent by
+accident. 409 when nothing is connected, when the cut has no finished render,
+or when a publish is already in flight.
+
+**`GET /api/youtube/connection`** — returns `{ configured, canStoreTokens,
+uploadsForReal, connection }`. There is no field that could carry a token, and
+`YouTubeAccountRepository.getConnection()` is the only shape that leaves the
+server.
+
+**`GET /api/youtube/auth`** — a 307 to Google, with `access_type=offline` and
+`prompt=consent` so a refresh token is always issued, plus a signed `state`
+mirrored into an httpOnly cookie. **`GET /api/youtube/callback`** compares the
+two, exchanges the code, reads which channel the token belongs to, and
+redirects to `/settings` with the outcome in the query string. Both are
+browser navigations, so neither returns the API envelope.
 
 **`POST /api/projects/[id]/renders`** — body is optional: `{ format }` picks
 the cut for a `both` project, defaulting to `shorts`, and asking for a cut the
@@ -800,8 +896,8 @@ Step 7  — Captions               → COMPLETE
 Step 8  — Video Rendering        → COMPLETE (placeholder visuals, no button)
 Step 9  — YouTube Metadata       → COMPLETE (live API path unverified)
 Step 10 — Content Library        → COMPLETE (publishing is recorded, not uploaded)
-Step 11 — YouTube Publishing     → NEXT
-Step 12 — Production Readiness   → PLANNED
+Step 11 — YouTube Publishing     → COMPLETE (live OAuth + upload unverified)
+Step 12 — Production Readiness   → NEXT
 ```
 
 ## 12. Known Limitations
@@ -857,9 +953,10 @@ trade-offs that now have an expiry date.
 14. **Dashboard stat overlap.** A `"both"` project counts toward both the
     Shorts and Long Videos tiles, so they intentionally do not sum to
     "Videos Created".
-15. **`published` is self-reported.** Marking a project published writes a
-    timestamp and an optional link. Nothing checks the link, and nothing
-    uploads. Step 11 replaces the claim with an actual upload.
+15. **The live YouTube path has never executed.** OAuth, the resumable
+    upload, and the processing poll are unproven against the real API — see
+    §2. `Mark published` also still exists for videos published by hand, and
+    nothing validates the link it records.
 16. **Export copies text through the clipboard.** `navigator.clipboard` needs
     a focused, permitted document; when it is refused the card says so rather
     than failing silently, but there is no fallback for a browser that blocks
@@ -867,7 +964,23 @@ trade-offs that now have an expiry date.
 17. **A `both` project exports only its first cut.** The Export menu links the
     latest render and reads the metadata for `metadataFormats(format)[0]`, so
     a project producing both cuts shows its Short. Both documents are stored;
-    only one is reachable from the card.
+    only one is reachable from the card. The publish panel does not share this
+    limit — it has a cut switcher.
+18. **One connected channel per installation.** `YouTubeAccount` is a single
+    row. Publishing to several channels would need a channel picker on the
+    form and a channel reference on the job.
+19. **Custom thumbnails are the render's own still, or nothing.** There is no
+    image upload and no asset generation, so there is no third option to
+    offer. YouTube also refuses custom thumbnails from unverified channels,
+    which the job reports as a warning.
+20. **The publish queue is in-process**, with the same limits as the render
+    queue (§5 above): an upload in flight is lost if the process exits. Unlike
+    a render, that can leave a video on YouTube that no job row completed —
+    the row does record the video id as soon as the upload returns, so it is
+    traceable.
+21. **Uploads count against a small YouTube quota.** The default is on the
+    order of a handful of videos a day; the client names that case
+    specifically because the API's own error is opaque.
 
 ## Environment Variables
 
@@ -882,8 +995,10 @@ Names only — never commit or print values.
 | `ELEVENLABS_MODEL` | Yes | Voice model (default `eleven_multilingual_v2`) |
 | `RENDER_FONT_PATH` | Yes | Font for on-screen text. Blank → search system paths |
 | `NEXT_PUBLIC_APP_URL` | **No** | Declared but unused (see §12) |
-| `YOUTUBE_CLIENT_ID` | **No** | Reserved for Step 11 |
-| `YOUTUBE_CLIENT_SECRET` | **No** | Reserved for Step 11 |
+| `YOUTUBE_CLIENT_ID` | Yes | Google OAuth client. Blank → mock uploader |
+| `YOUTUBE_CLIENT_SECRET` | Yes | Google OAuth secret. Blank → mock uploader |
+| `YOUTUBE_REDIRECT_URI` | Yes | Must match the registered URI exactly |
+| `YOUTUBE_TOKEN_KEY` | Yes | 32 bytes. Encrypts stored tokens; blank blocks connecting |
 
 Validated in `src/lib/env.ts` via `getServerEnv()`, which throws a descriptive
 error on misconfiguration. `getFeatureAvailability()` derives booleans for the

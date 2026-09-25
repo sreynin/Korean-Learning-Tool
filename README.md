@@ -14,7 +14,15 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 10 — Content library.** What works today:
+**Step 11 — YouTube publishing.** What works today:
+
+- **Publishing to YouTube** — connect a channel with Google sign-in, fill in
+  title, description, tags, visibility, thumbnail, category and language, and
+  upload a finished render. Progress runs Uploading… → Processing… →
+  Published, and the video ID, URL, publish date, visibility and project are
+  recorded against the attempt. Nothing is ever published without you pressing
+  Publish and confirming
+
 
 - **A project library at `/projects`** — cards showing a still from the
   rendered video, title, topic, level, video type, duration, status, and when
@@ -72,10 +80,15 @@ script, written by the scene generator and consumed by the voice stage.
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
-**Not implemented yet:** asset generation, and uploading to YouTube. The
-metadata for an upload is written and editable; nothing publishes it yet.
-**"Mark published" records what you did on YouTube yourself** — a timestamp
-and an optional link. It uploads nothing and verifies nothing.
+**Not implemented yet:** asset generation.
+
+**The live YouTube path has never been exercised.** There was no Google Cloud
+project or channel available while it was built, so only the mock uploader ran
+end to end. Connect a channel and publish one **private** video before trusting
+it with anything else.
+
+"Mark published" is still there for videos you uploaded by hand — it records a
+timestamp and an optional link, and verifies nothing.
 
 One thing about rendering is worth knowing: scenes have no imagery yet —
 `visualPrompt` is a prompt, not a picture — so each scene's backdrop is the
@@ -87,7 +100,22 @@ thumbnail, taken from the first scene that actually draws text.
 Without an `AI_API_KEY` the app falls back to mock generators that return
 clearly-labelled placeholder lessons, storyboards, and metadata, so the whole
 flow works before you have credentials. Nothing they produce should be
-published as written — every field says so.
+published as written — every field says so. The same is true of publishing:
+with no YouTube credentials the publish form runs against a mock that uploads
+nothing and hands back an `example.invalid` link it labels as a placeholder.
+
+To publish for real you need a Google Cloud project with the **YouTube Data
+API v3** enabled and an OAuth client of type *Web application*, plus a key to
+encrypt the stored tokens:
+
+```bash
+openssl rand -base64 32
+```
+
+Put that in `YOUTUBE_TOKEN_KEY`. Without it the app refuses to connect an
+account rather than storing a refresh token in plain text — that token can
+upload to your channel until you revoke it. Your YouTube password is never
+entered into this app and never stored: sign-in happens on Google.
 
 ## Requirements
 

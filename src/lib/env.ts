@@ -26,9 +26,21 @@ const serverEnvSchema = z.object({
   // a Korean-capable face, and this overrides that search.
   RENDER_FONT_PATH: z.string().optional(),
 
-  // Declared but unused until the matching feature lands.
+  // YouTube publishing. Optional: without a client id and secret the app uses
+  // the mock uploader, so the whole connect → fill in → publish flow works
+  // before any Google project exists.
   YOUTUBE_CLIENT_ID: z.string().optional(),
   YOUTUBE_CLIENT_SECRET: z.string().optional(),
+  // Google matches this against the registered URI exactly, so it is
+  // configured rather than derived from a base URL.
+  YOUTUBE_REDIRECT_URI: z
+    .string()
+    .url()
+    .default("http://localhost:3000/api/youtube/callback"),
+  // 32 bytes, base64 or hex, used to encrypt stored OAuth tokens at rest.
+  // Without it the app refuses to store a token rather than writing one in
+  // plain text — see src/server/youtube/token-store.ts.
+  YOUTUBE_TOKEN_KEY: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -48,6 +60,8 @@ export function getServerEnv(): ServerEnv {
     RENDER_FONT_PATH: emptyToUndefined(process.env.RENDER_FONT_PATH),
     YOUTUBE_CLIENT_ID: emptyToUndefined(process.env.YOUTUBE_CLIENT_ID),
     YOUTUBE_CLIENT_SECRET: emptyToUndefined(process.env.YOUTUBE_CLIENT_SECRET),
+    YOUTUBE_REDIRECT_URI: emptyToUndefined(process.env.YOUTUBE_REDIRECT_URI),
+    YOUTUBE_TOKEN_KEY: emptyToUndefined(process.env.YOUTUBE_TOKEN_KEY),
   });
 
   if (!parsed.success) {
@@ -73,6 +87,11 @@ export function getFeatureAvailability() {
     lessonGeneration: Boolean(env.AI_API_KEY),
     voiceSynthesis: Boolean(env.ELEVENLABS_API_KEY),
     youtubeUpload: Boolean(env.YOUTUBE_CLIENT_ID && env.YOUTUBE_CLIENT_SECRET),
+    // Reported separately: a real upload needs both OAuth credentials *and*
+    // somewhere safe to keep the token, and missing the key is the kind of
+    // misconfiguration worth naming on its own rather than folding into
+    // "not configured".
+    youtubeTokenEncryption: Boolean(env.YOUTUBE_TOKEN_KEY),
   };
 }
 

@@ -50,10 +50,10 @@ model Project {
   /// Set when the creator marks the preview reviewed. Null means not reviewed.
   previewReviewedAt DateTime?
 
-  /// Set when the creator says they published it. Nothing uploads yet, so
-  /// this is their word, not the app's.
+  /// Set when the video was published — either by a finished upload, or by
+  /// the creator saying they published it themselves.
   publishedAt DateTime?
-  /// Where they published it, if they recorded a link.
+  /// The watch URL, from the upload or recorded by hand.
   youtubeUrl  String?
 
   createdAt DateTime
@@ -63,6 +63,7 @@ model Project {
   storyboard  Storyboard?
   renderJobs  RenderJob[]
   metadata    Metadata[]
+  publishJobs PublishJob[]
 
   @@index([updatedAt])
   @@index([status])
@@ -169,22 +170,22 @@ model RenderJob {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   /// shorts | long — which cut this job renders.
-  format String @default("shorts")
+  format   String @default("shorts")
   /// pending | queued | processing | completed | failed
-  status String @default("pending")
+  status   String @default("pending")
   /// 0-100.
-  progress Int @default(0)
+  progress Int    @default(0)
 
   /// Why the job failed. Null while it has not.
-  errorMessage String?
+  errorMessage   String?
   /// File name inside the render directory. Null until a render succeeds.
   outputFileName String?
   /// Still taken from the finished video, used as the library thumbnail.
   posterFileName String?
   /// Media type of the finished file, e.g. video/mp4.
-  contentType String?
+  contentType    String?
   /// Size of the finished file in bytes.
-  byteSize Int?
+  byteSize       Int?
 
   createdAt   DateTime  @default(now())
   startedAt   DateTime?
@@ -221,4 +222,84 @@ model Metadata {
   editedAt    DateTime?
 
   @@unique([projectId, format])
+}
+
+/// The YouTube channel this installation is connected to.
+///
+/// One row at a time, identified by `SINGLETON_ACCOUNT_ID`: this is a
+/// single-creator tool, and a second connected channel would raise a question
+/// ("which one does this project publish to?") that nothing in the UI asks.
+///
+/// **The two token columns hold ciphertext, never a usable credential.** They
+/// are written and read only through src/server/youtube/token-store.ts, which
+/// refuses to store anything at all when no encryption key is configured.
+model YouTubeAccount {
+  id String @id
+
+  channelId    String
+  channelTitle String
+
+  /// AES-256-GCM, encoded `v1.<iv>.<tag>.<ciphertext>`.
+  accessTokenEncrypted  String
+  /// The long-lived one. Encrypted the same way.
+  refreshTokenEncrypted String
+  /// When the access token stops working and has to be refreshed.
+  expiresAt             DateTime
+
+  /// JSON: string[] — scopes the creator actually granted.
+  scopes String
+
+  connectedAt DateTime
+  updatedAt   DateTime
+}
+
+/// A single attempt to publish one cut of a project to YouTube.
+///
+/// Same model as RenderJob and for the same reason: an upload outlives the
+/// request that starts it. The row also keeps what the creator submitted and
+/// what YouTube gave back, so the record of a publish survives a later
+/// re-publish rather than being overwritten by it.
+model PublishJob {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// shorts | long — which cut this job publishes.
+  format   String
+  /// pending | queued | uploading | processing | completed | failed
+  status   String @default("pending")
+  /// 0-100, across the upload.
+  progress Int    @default(0)
+
+  /// Why the job failed. Null while it has not.
+  errorMessage   String?
+  /// Something that went wrong without stopping the publish, e.g. a thumbnail
+  /// an unverified channel was not allowed to set.
+  warningMessage String?
+
+  // What the creator filled in on the form, kept so a finished job explains
+  // what was actually sent rather than what the metadata says today.
+  title       String
+  description String
+  /// JSON: string[]
+  tags        String
+  visibility  String
+  categoryId  String
+  language    String
+  thumbnail   String
+
+  // What YouTube gave back. Null until the upload succeeds.
+  videoId     String?
+  videoUrl    String?
+  publishedAt DateTime?
+
+  /// "youtube", or "mock" when no credentials are configured.
+  provider String @default("mock")
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([projectId, createdAt])
+  @@index([status])
 }

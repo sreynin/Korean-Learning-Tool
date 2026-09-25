@@ -5,6 +5,11 @@ import type { VoiceLanguage, VoiceOption, VoiceSettings } from "@/types/voice";
 import type { CaptionSettings } from "@/types/caption";
 import type { RenderFormat, RenderJob } from "@/types/render";
 import type {
+  PublishJob,
+  PublishSettings,
+  YouTubeConnection,
+} from "@/types/youtube";
+import type {
   MetadataField,
   MetadataFormat,
   VideoMetadata,
@@ -248,7 +253,56 @@ export const api = {
       request<RenderJob>(`/projects/${projectId}/renders/${jobId}`),
   },
 
+  youtube: {
+    /** The connected channel and what this installation can do. No tokens. */
+    connection: () => request<PublishCapability>("/youtube/connection"),
+
+    /** Revokes the grant with Google and forgets the stored token. */
+    disconnect: () =>
+      request<PublishCapability>("/youtube/connection", { method: "DELETE" }),
+  },
+
+  publishing: {
+    /**
+     * Starts an upload. `confirm` is sent explicitly so nothing can publish a
+     * video by replaying a request that merely looks like a form submission.
+     */
+    start: (
+      projectId: string,
+      settings: PublishSettings,
+      format?: RenderFormat,
+    ) =>
+      request<{ job: PublishJob; project: VideoProject }>(
+        `/projects/${projectId}/publish-jobs`,
+        {
+          method: "POST",
+          body: JSON.stringify({ ...settings, format, confirm: true }),
+        },
+      ),
+
+    list: (projectId: string) =>
+      request<PublishJob[]>(`/projects/${projectId}/publish-jobs`),
+
+    get: (projectId: string, jobId: string) =>
+      request<PublishJob>(`/projects/${projectId}/publish-jobs/${jobId}`),
+  },
+
   stats: {
     get: () => request<ProjectStats>("/stats"),
   },
 };
+
+/**
+ * Mirrors `PublishCapability` from the publish service.
+ *
+ * Declared here rather than imported because that module reaches into
+ * `src/server/**`, and this file is bundled for the browser — importing the
+ * type would be enough to pull the server graph, and with it the env module
+ * that reads secrets.
+ */
+export interface PublishCapability {
+  configured: boolean;
+  canStoreTokens: boolean;
+  uploadsForReal: boolean;
+  connection: YouTubeConnection | null;
+}
