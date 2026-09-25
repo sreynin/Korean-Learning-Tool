@@ -1,4 +1,5 @@
 import { jsonOk, parseJsonBody, route } from "@/server/http";
+import { GENERATION_LIMIT, enforceRateLimit } from "@/server/rate-limit";
 import { lessonEditSchema } from "@/server/ai/lesson-schema";
 import {
   generateLessonForProject,
@@ -13,6 +14,8 @@ interface RouteContext {
 
 /** Generates a lesson from the project's own configuration and stores it. */
 export const POST = route(async (_request: Request, context: RouteContext) => {
+  enforceRateLimit("lesson", GENERATION_LIMIT);
+
   const { id } = await context.params;
   const { lesson, model } = await generateLessonForProject(id);
   const project = await saveLesson(id, lesson, { model, edited: false });

@@ -13,6 +13,27 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      /**
+       * A leading underscore means "deliberately unused".
+       *
+       * Every route handler takes its `Request` so `route()` can run the
+       * origin and local-access guards on it, and most handlers never read it
+       * themselves. The default `after-used` setting reports those only when
+       * the argument happens to be last, which would make the convention
+       * depend on parameter order.
+       */
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

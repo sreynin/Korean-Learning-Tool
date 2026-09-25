@@ -5,6 +5,9 @@ import { assertConnectable } from "@/server/services/publish-service";
 import { GoogleYouTubeClient } from "@/server/youtube/google-youtube-client";
 import { exchangeCodeForTokens, verifyState } from "@/server/youtube/oauth";
 import { safeEquals } from "@/server/youtube/token-store";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("youtube");
 
 /**
  * Where Google sends the creator back.
@@ -77,7 +80,7 @@ export const GET = route(async (request: Request) => {
   } catch (cause) {
     const message =
       cause instanceof Error ? cause.message : "The connection could not be completed.";
-    console.error("[youtube] callback failed", message);
+    log.error("callback failed", message);
     return failure(settings, message);
   }
 });

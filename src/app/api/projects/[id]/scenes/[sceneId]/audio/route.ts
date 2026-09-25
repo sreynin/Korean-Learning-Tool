@@ -1,5 +1,6 @@
 import { ValidationError } from "@/server/errors";
 import { jsonOk, route, toFieldIssues } from "@/server/http";
+import { VOICE_LIMIT, enforceRateLimit } from "@/server/rate-limit";
 import {
   deleteSceneAudio,
   generateSceneAudio,
@@ -15,6 +16,8 @@ interface RouteContext {
 
 /** Generates (or regenerates) narration for one scene. */
 export const POST = route(async (request: Request, context: RouteContext) => {
+  enforceRateLimit("voice", VOICE_LIMIT);
+
   const { id, sceneId } = await context.params;
 
   // Per-scene overrides are optional, so an empty body is valid.

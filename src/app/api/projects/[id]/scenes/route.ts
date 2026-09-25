@@ -1,4 +1,5 @@
 import { jsonOk, parseJsonBody, route } from "@/server/http";
+import { GENERATION_LIMIT, enforceRateLimit } from "@/server/rate-limit";
 import { storyboardEditSchema } from "@/server/ai/scene-schema";
 import {
   generateScenesForProject,
@@ -13,6 +14,8 @@ interface RouteContext {
 
 /** Builds a storyboard from the project's saved lesson and stores it. */
 export const POST = route(async (_request: Request, context: RouteContext) => {
+  enforceRateLimit("scenes", GENERATION_LIMIT);
+
   const { id } = await context.params;
   const { scenes, model } = await generateScenesForProject(id);
   const project = await saveScenes(id, scenes, { model, edited: false });

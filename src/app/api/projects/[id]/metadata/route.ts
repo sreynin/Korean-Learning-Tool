@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { jsonOk, parseJsonBody, route } from "@/server/http";
+import { GENERATION_LIMIT, enforceRateLimit } from "@/server/rate-limit";
 import { metadataEditSchema } from "@/server/ai/metadata-schema";
 import {
   generateMetadataForProject,
@@ -24,6 +25,8 @@ const saveSchema = metadataEditSchema.extend({
 
 /** Writes the metadata for one cut from the project's saved lesson. */
 export const POST = route(async (request: Request, context: RouteContext) => {
+  enforceRateLimit("metadata", GENERATION_LIMIT);
+
   const { id } = await context.params;
   const { format } = await parseOptionalBody(request);
 

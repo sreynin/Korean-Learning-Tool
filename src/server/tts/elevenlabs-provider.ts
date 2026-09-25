@@ -7,6 +7,9 @@ import type {
 } from "@/server/tts/text-to-speech-provider";
 import { DEFAULT_VOICE_IDS } from "@/types/voice";
 import type { VoiceLanguage, VoiceOption } from "@/types/voice";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("tts");
 
 const API_BASE = "https://api.elevenlabs.io/v1";
 
@@ -62,7 +65,7 @@ export class ElevenLabsProvider implements TextToSpeechProvider {
         }),
       });
     } catch (error) {
-      console.error("[tts] connection error", error);
+      log.error("connection error", error);
       throw new AppError(
         "generation_failed",
         "Could not reach the voice provider. Check your connection and try again.",
@@ -104,7 +107,7 @@ export class ElevenLabsProvider implements TextToSpeechProvider {
           headers: { "xi-api-key": this.apiKey },
         });
       } catch (error) {
-        console.error("[tts] connection error", error);
+        log.error("connection error", error);
         throw new AppError(
           "generation_failed",
           "Could not reach the voice provider to list voices.",
@@ -168,7 +171,7 @@ function toVoiceOption(voice: ElevenLabsVoice): VoiceOption {
 async function toAppError(response: Response): Promise<AppError> {
   // Read the body for the log, never for the client — it can echo the request.
   const detail = await response.text().catch(() => "");
-  console.error("[tts] provider error", response.status, detail.slice(0, 300));
+  log.error("provider error", { status: response.status, detail: detail.slice(0, 300) });
 
   if (response.status === 401 || response.status === 403) {
     return new AppError(

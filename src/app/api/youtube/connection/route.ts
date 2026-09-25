@@ -10,12 +10,12 @@ import {
  * Returns the channel a creator connected — never a token. `PublishCapability`
  * has no field that could carry one.
  */
-export const GET = route(async () => {
+export const GET = route(async (_request: Request) => {
   return jsonOk(await getPublishCapability());
 });
 
 /** Revokes the grant with Google, then forgets the row. */
-export const DELETE = route(async () => {
+export const DELETE = route(async (_request: Request) => {
   await disconnectYouTube();
   return jsonOk(await getPublishCapability());
 });

@@ -19,6 +19,9 @@ import type { RenderFormat } from "@/types/render";
 import type { Scene } from "@/types/scene";
 import type { LaidOutText } from "@/server/render/frame-layout";
 import type { RenderRequest, RenderResult, Renderer } from "@/server/render/renderer";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("render");
 
 export const FFMPEG_RENDERER_NAME = "ffmpeg";
 export const RENDER_CONTENT_TYPE = "video/mp4";
@@ -287,7 +290,7 @@ async function extractPoster(
   } catch (error) {
     if (signal?.aborted) throw error;
 
-    console.error("[render] could not extract a poster frame", error);
+    log.error("could not extract a poster frame", error);
     return null;
   }
 }

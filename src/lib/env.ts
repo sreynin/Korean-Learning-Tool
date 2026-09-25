@@ -41,6 +41,11 @@ const serverEnvSchema = z.object({
   // Without it the app refuses to store a token rather than writing one in
   // plain text — see src/server/youtube/token-store.ts.
   YOUTUBE_TOKEN_KEY: z.string().optional(),
+
+  // The app has no authentication, so it only serves localhost unless this is
+  // an explicit "true" — see src/server/security.ts.
+  ALLOW_REMOTE_ACCESS: z.enum(["true", "false"]).optional(),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -62,6 +67,8 @@ export function getServerEnv(): ServerEnv {
     YOUTUBE_CLIENT_SECRET: emptyToUndefined(process.env.YOUTUBE_CLIENT_SECRET),
     YOUTUBE_REDIRECT_URI: emptyToUndefined(process.env.YOUTUBE_REDIRECT_URI),
     YOUTUBE_TOKEN_KEY: emptyToUndefined(process.env.YOUTUBE_TOKEN_KEY),
+    ALLOW_REMOTE_ACCESS: emptyToUndefined(process.env.ALLOW_REMOTE_ACCESS),
+    LOG_LEVEL: emptyToUndefined(process.env.LOG_LEVEL),
   });
 
   if (!parsed.success) {

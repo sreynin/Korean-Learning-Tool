@@ -2,6 +2,17 @@ import type { PrismaClient, RenderJob as RenderJobRow } from "@prisma/client";
 import { getDb } from "@/server/db/client";
 import { ACTIVE_RENDER_STATUSES } from "@/types/render";
 import type { RenderFormat, RenderJob, RenderStatus } from "@/types/render";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("render");
+
+/**
+ * How long a job may sit in an active state before it is assumed abandoned.
+ *
+ * Longer than the slowest render observed (a 10-minute long-form cut took 66
+ * seconds on an M-series Mac), with a wide margin for a slower machine.
+ */
+export const STALE_JOB_MS = 30 * 60 * 1000;
 
 /**
  * Persistence for render jobs.
@@ -50,6 +61,10 @@ export class RenderJobRepository {
     projectId: string,
     format: RenderFormat,
   ): Promise<RenderJob | null> {
+    // A job abandoned by a crashed process would otherwise hold the slot for
+    // ever — see `expireStale`.
+    await this.expireStale();
+
     return this.db.$transaction(async (tx) => {
       const active = await tx.renderJob.findFirst({
         where: { projectId, status: { in: ACTIVE_RENDER_STATUSES } },
@@ -146,6 +161,46 @@ export class RenderJobRepository {
       },
     });
     return row ? toDomain(row) : null;
+  }
+
+  /**
+   * Fails jobs that were left running by a process that is no longer here.
+   *
+   * The queue runs in this process, so a job in `processing` is only real
+   * while the process that claimed it is alive. A crash, a deploy, or a
+   * Ctrl-C used to leave the row exactly as it was — and because
+   * `createIfIdle` refuses while any job is active, that project could never
+   * be rendered again, with nothing in the UI to clear it.
+   *
+   * The cut-off is generous on purpose: a long-form render legitimately takes
+   * minutes, and failing a job that is still working would be worse than
+   * waiting. Anything past it is not slow, it is gone.
+   */
+  async expireStale(olderThanMs = STALE_JOB_MS): Promise<number> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+
+    const { count } = await this.db.renderJob.updateMany({
+      where: {
+        status: { in: ["pending", "queued", "processing"] },
+        // `startedAt` for a claimed job; `createdAt` for one never picked up.
+        OR: [
+          { startedAt: { lt: cutoff } },
+          { startedAt: null, createdAt: { lt: cutoff } },
+        ],
+      },
+      data: {
+        status: "failed",
+        errorMessage:
+          "The render stopped without finishing — the app was probably restarted while it was running. Start it again.",
+        completedAt: new Date(),
+      },
+    });
+
+    if (count > 0) {
+      log.warn(`released ${count} abandoned job(s)`);
+    }
+
+    return count;
   }
 
   /** Jobs a worker should pick up, oldest first. */

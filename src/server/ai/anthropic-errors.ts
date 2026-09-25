@@ -1,5 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "@/server/errors";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("ai");
 
 /** Maps SDK errors onto the app's error envelope without leaking internals. */
 export function toAppError(error: unknown, what: string): AppError {
@@ -28,7 +31,7 @@ export function toAppError(error: unknown, what: string): AppError {
   }
 
   if (error instanceof Anthropic.APIError) {
-    console.error("[ai] provider error", error.status, error.message);
+    log.error("provider error", { status: error.status, detail: error.message });
     return new AppError(
       "generation_failed",
       "The AI provider returned an error. Try again in a moment.",
@@ -41,7 +44,7 @@ export function toAppError(error: unknown, what: string): AppError {
   // reply not matching the structured-output schema. That is an upstream
   // formatting problem, not a fault in this server, so it is a 502.
   if (error instanceof Anthropic.AnthropicError) {
-    console.error("[ai] structured output error", error.message);
+    log.error("structured output error", error.message);
     return new AppError(
       "generation_failed",
       `${what} failed: the model returned a response that did not match the expected format.`,
@@ -49,7 +52,7 @@ export function toAppError(error: unknown, what: string): AppError {
     );
   }
 
-  console.error("[ai] unexpected generation error", error);
+  log.error("unexpected generation error", error);
   return new AppError(
     "generation_failed",
     `${what} failed unexpectedly.`,

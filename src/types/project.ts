@@ -191,6 +191,15 @@ export interface ProjectListFilters {
   level?: ProficiencyLevel;
   /** Case-insensitive match against title and topic. */
   search?: string;
+  /**
+   * Cap on how many rows come back.
+   *
+   * Server-side only — it is not read from the query string, because a caller
+   * that could set it could also set it to something enormous. The dashboard
+   * uses it so its three sections cost three small queries instead of one that
+   * loads the whole library.
+   */
+  limit?: number;
 }
 
 export interface ProjectStats {

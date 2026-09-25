@@ -14,7 +14,7 @@ import { buildAuthorizationUrl, createState } from "@/server/youtube/oauth";
  * the callback compares the two, which is what stops a link someone else
  * crafted from completing a connection in this browser.
  */
-export const GET = route(async () => {
+export const GET = route(async (_request: Request) => {
   assertConnectable();
 
   const state = createState();

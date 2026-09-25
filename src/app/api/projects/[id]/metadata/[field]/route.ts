@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ValidationError } from "@/server/errors";
 import { jsonOk, parseJsonBody, route } from "@/server/http";
+import { FIELD_LIMIT, enforceRateLimit } from "@/server/rate-limit";
 import { regenerateMetadataField } from "@/server/services/metadata-service";
 import { METADATA_FIELDS } from "@/types/metadata";
 import { RENDER_FORMATS } from "@/types/render";
@@ -16,6 +17,8 @@ const bodySchema = z.object({ format: z.enum(RENDER_FORMATS).optional() });
 
 /** Rewrites one field, leaving the rest of the document as it is. */
 export const POST = route(async (request: Request, context: RouteContext) => {
+  enforceRateLimit("metadata-field", FIELD_LIMIT);
+
   const { id, field } = await context.params;
   const { format } = await parseOptionalBody(request);
 

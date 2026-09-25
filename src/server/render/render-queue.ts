@@ -5,6 +5,29 @@ import { syncDerivedState } from "@/server/services/pipeline-service";
 import type { ProjectRepository } from "@/server/repositories";
 import type { RenderJobRepository } from "@/server/repositories/render-job-repository";
 import type { Renderer } from "@/server/render/renderer";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("render");
+
+/**
+ * How long a single render may run before it is killed.
+ *
+ * Nothing bounded this before: `runFfmpeg` accepts an `AbortSignal` and
+ * `runRenderJob` passes one through, but no caller ever supplied one, so a
+ * wedged FFmpeg process ran until the machine was restarted — and held the
+ * project's only render slot while it did.
+ */
+export const RENDER_TIMEOUT_MS = 20 * 60 * 1000;
+
+/**
+ * How many renders may encode at once.
+ *
+ * One job per project was the only limit, so N projects meant N concurrent
+ * FFmpeg processes, each saturating what cores it could get. Past a small
+ * number they do not finish sooner, they just finish together and make the
+ * machine unusable meanwhile.
+ */
+export const MAX_CONCURRENT_RENDERS = 2;
 
 /**
  * Hands a job to whatever will execute it.
@@ -32,6 +55,7 @@ export class InProcessRenderQueue implements RenderQueue {
   private readonly jobs: RenderJobRepository;
   private readonly projects: ProjectRepository;
   private readonly onSettled?: () => void;
+  private readonly gate: ConcurrencyGate;
 
   constructor(options: {
     renderer: Renderer;
@@ -39,11 +63,16 @@ export class InProcessRenderQueue implements RenderQueue {
     projects?: ProjectRepository;
     /** Test hook: called after a job reaches a terminal state. */
     onSettled?: () => void;
+    /** Overridable so a worker process can choose its own limit. */
+    maxConcurrent?: number;
   }) {
     this.renderer = options.renderer;
     this.jobs = options.jobs ?? getRenderJobRepository();
     this.projects = options.projects ?? getProjectRepository();
     this.onSettled = options.onSettled;
+    this.gate = new ConcurrencyGate(
+      options.maxConcurrent ?? MAX_CONCURRENT_RENDERS,
+    );
   }
 
   async enqueue(jobId: string): Promise<void> {
@@ -51,19 +80,51 @@ export class InProcessRenderQueue implements RenderQueue {
 
     // Deliberately not awaited: the caller is an HTTP request.
     void this.run(jobId).catch((error) => {
-      console.error("[render] worker crashed", error);
+      log.error("worker crashed", error);
     });
   }
 
   /** Exposed so a worker process and the tests can drive a job to completion. */
   async run(jobId: string): Promise<void> {
-    await runRenderJob({
-      jobId,
-      renderer: this.renderer,
-      jobs: this.jobs,
-      projects: this.projects,
-    });
+    await this.gate.run(() =>
+      runRenderJob({
+        jobId,
+        renderer: this.renderer,
+        jobs: this.jobs,
+        projects: this.projects,
+        signal: AbortSignal.timeout(RENDER_TIMEOUT_MS),
+      }),
+    );
     this.onSettled?.();
+  }
+}
+
+/**
+ * Lets a fixed number of tasks run at once and queues the rest.
+ *
+ * Deliberately tiny and in-process: it bounds this process, which is the same
+ * scope `InProcessRenderQueue` already has. A deployment with several
+ * instances needs the limit to live in the queue itself, which is the same
+ * change as replacing the queue.
+ */
+export class ConcurrencyGate {
+  private active = 0;
+  private readonly waiting: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    if (this.active >= this.limit) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+
+    this.active += 1;
+    try {
+      return await task();
+    } finally {
+      this.active -= 1;
+      this.waiting.shift()?.();
+    }
   }
 }
 
@@ -122,9 +183,12 @@ export async function runRenderJob(options: {
       await deleteRenderFile(outputFileName);
     }
 
-    const message =
-      error instanceof Error ? error.message : "The render failed unexpectedly.";
-    console.error("[render] job failed", jobId, message);
+    const message = signal?.aborted
+      ? `The render was stopped after ${Math.round(RENDER_TIMEOUT_MS / 60000)} minutes without finishing.`
+      : error instanceof Error
+        ? error.message
+        : "The render failed unexpectedly.";
+    log.error("job failed", { jobId, reason: message });
     await jobs.markFailed(jobId, message);
   }
 

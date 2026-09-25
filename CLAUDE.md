@@ -49,7 +49,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 9 | YouTube Metadata | **COMPLETE** (live AI path unverified) |
 | 10 | Content Library | **COMPLETE** |
 | 11 | YouTube Publishing | **COMPLETE** (live OAuth + upload unverified) |
-| 12 | Production Readiness | NOT STARTED |
+| 12 | Production Readiness | **IN PROGRESS** (CRITICAL/HIGH/MEDIUM fixed; LOW open) |
 
 **Steps 3 and 4 caveat — the live AI path has never been executed.** No
 `AI_API_KEY` was available during development, so only `MockLessonGenerator`
@@ -606,6 +606,87 @@ what returns is a one-time code, exchanged server-side.
 - Tokens are decrypted only inside `YouTubeAccountRepository`. No API route
   returns one, and `PublishCapability` has no field that could hold one.
 
+### Security posture — `src/server/security.ts`
+
+**This app has no authentication, on purpose, and that is only safe because
+reachability is constrained.** Every request passes two guards inside
+`route()`, so a new route gets them by being a route:
+
+- `assertLocalRequest` refuses anything not addressed to a loopback host.
+  `ALLOW_REMOTE_ACCESS=true` is the deliberate opt-out for someone who has put
+  their own authentication in front. Without it, "bind to localhost" was an
+  assumption; with it, it is enforced.
+- `assertSameOrigin` refuses cross-origin state changes. This was a real,
+  reproduced hole, not a theoretical one: `Request.json()` parses a body
+  whatever the content type claims, so an HTML form with
+  `enctype="text/plain"` was a *simple* cross-origin request — no CORS
+  preflight — that could create projects, start renders, or **publish a video
+  to the connected channel**. `parseJsonBody` now also requires an
+  `application/json` content type, which closes the same hole independently.
+
+Both guards need the `Request`, so **every handler takes one**, including the
+ones that ignore it. `tests/security.test.ts` asserts structurally that none
+omits it, because a mutation written without it would be silently unguarded.
+
+Neither guard is authentication. Multi-user needs real accounts, per-row
+ownership, and a per-user YouTube connection.
+
+Security headers (CSP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`,
+`Permissions-Policy`) are set in `next.config.ts`. The CSP allows
+`'unsafe-inline'`/`'unsafe-eval'` for scripts because the App Router injects
+inline bootstrap code; a nonce policy needs middleware on every response.
+
+### Job reliability
+
+- **Abandoned jobs are released.** A job in `processing` is only real while the
+  process that claimed it is alive. A crash used to leave the row untouched,
+  and `createIfIdle` refuses while any job is active — so that project could
+  never be rendered or published again, with nothing in the UI to clear it.
+  `expireStale()` runs on every create; cut-offs are 30 minutes for a render,
+  60 for a publish. An abandoned publish that already uploaded **names the
+  video id**, because the next step is to check the channel, not to re-upload.
+- **Jobs have timeouts.** The `AbortSignal` plumbing existed end to end and
+  nothing ever supplied one, so a wedged FFmpeg ran until the machine was
+  restarted. Both queues now pass `AbortSignal.timeout(...)`.
+- **Concurrency is capped** by `ConcurrencyGate` (2 renders, 2 publishes). One
+  job per *project* was the only limit, so N projects meant N FFmpeg
+  processes.
+- **FFmpeg is chosen by capability, not presence.** `drawtext` is optional in
+  an FFmpeg build — Homebrew's often lacks it — and the resolver preferred any
+  system binary it found. On such a machine every render failed at the first
+  scene with text, after the job had started. `ffmpegPath()` now checks
+  `-filters` and falls back to the bundled build, logging a warning.
+
+### Rate limiting — `src/server/rate-limit.ts`
+
+In-process, per installation, on the routes that call paid APIs. It is **not**
+a security control — there is no identity to limit — it exists so a runaway
+retry loop cannot run up a bill unattended.
+
+Limits sit near the top of human usage (40/hour per document, 200 for a single
+metadata field, 300 for narration) rather than near the bottom. A runaway loop
+makes hundreds of calls a minute; a creator makes a few dozen an hour. The
+first calibration was 12/hour and the metadata tests caught it immediately —
+a limiter that blocks real work is a worse bug than the one it prevents.
+
+### Logging — `src/server/logger.ts`
+
+One JSON object per line with a level, a scope and a timestamp, replacing bare
+`console.*` calls. `LOG_LEVEL` sets the floor.
+
+`redactPaths()` strips absolute filesystem paths from anything logged **or
+returned by the API**. FFmpeg writes its working paths into stderr, that tail
+becomes a job's `errorMessage`, and that message is stored and served to the
+browser — which leaked the installation's directory layout and the creator's
+home directory name. URLs are set aside first, so a publish error still names
+the YouTube endpoint it failed against.
+
+### Health — `GET /api/health`
+
+Reports the database and the FFmpeg binary, not just configuration booleans,
+and answers **503** when either is broken. It previously returned `ok` with an
+unreachable database and a missing encoder.
+
 ## 6. API Endpoints
 
 Every response uses the envelope in `src/types/api.ts`:
@@ -897,7 +978,7 @@ Step 8  — Video Rendering        → COMPLETE (placeholder visuals, no button)
 Step 9  — YouTube Metadata       → COMPLETE (live API path unverified)
 Step 10 — Content Library        → COMPLETE (publishing is recorded, not uploaded)
 Step 11 — YouTube Publishing     → COMPLETE (live OAuth + upload unverified)
-Step 12 — Production Readiness   → NEXT
+Step 12 — Production Readiness   → IN PROGRESS (audit done; LOW findings open)
 ```
 
 ## 12. Known Limitations
@@ -912,17 +993,18 @@ trade-offs that now have an expiry date.
 2. **The live AI path has never executed** for any of the three generators —
    lesson, scene, or metadata. See §2.
 3. **SQLite is single-writer and local-file.** Fine for one creator on one
-   machine, which is the current situation. It is not suitable for concurrent
-   users or a serverless deployment; moving to Postgres is a Prisma provider
-   change plus regenerated migrations.
+   machine, which is now *enforced* rather than assumed — see the security
+   posture in §5. Moving to Postgres is a Prisma provider change plus
+   regenerated migrations.
 4. **Lesson, scene, and voice generation still run inside the HTTP request**
    (`maxDuration = 300`). Rendering no longer does — it goes through the render
    job — but the generators have not been moved onto the same mechanism.
-5. **The render queue is in-process.** `InProcessRenderQueue` runs a job after
-   the request returns, in the app's own process: work in flight is lost if the
-   process exits, and it does not span instances. `scripts/render-worker.ts`
-   proves the job row is the only coupling, and replacing the queue is one new
-   `RenderQueue` implementation.
+5. **The render and publish queues are in-process.** Work in flight is lost
+   if the process exits, and neither spans instances. The loss is no longer
+   silent — `expireStale()` releases the row on the next attempt — but it is
+   still a loss. `scripts/render-worker.ts` proves the job row is the only
+   coupling. The concurrency caps live in the queue, so they bound this
+   process only.
 6. **Tests cover persistence, stage rules, and rendering only.** Duration
    reconciliation, `"both"` stat counting, and quiz answer reconciliation are
    still unverified by automation.
@@ -932,10 +1014,9 @@ trade-offs that now have an expiry date.
    per-run width measurement that FFmpeg's `drawtext` cannot provide.
    `slide` renders as a fade for the same reason: there is nothing behind a
    scene to slide over.
-8. **Rendering is CPU-bound and unbounded in time.** A 30-second Short takes
-   about 4 seconds; a 10-minute long-form cut took 66 seconds on an M-series
-   Mac. Nothing limits how many renders run at once beyond one job per
-   project.
+8. **Rendering is CPU-bound.** A 30-second Short takes about 4 seconds; a
+   10-minute long-form cut took 66 seconds on an M-series Mac. Two renders run
+   at once and the rest queue; a single render is capped at 20 minutes.
 9. **Dead code.** `api.projects.list/get`, `api.stats.get`, and
    `api.lessons.generate` have no callers. `/api/stats` and `/api/health` have
    no in-app consumers.
@@ -982,6 +1063,26 @@ trade-offs that now have an expiry date.
     order of a handful of videos a day; the client names that case
     specifically because the API's own error is opaque.
 
+### Open findings from the production-readiness audit (LOW)
+
+Reviewed, classified, and deliberately not fixed in that pass.
+
+22. **`npm audit` reports 4 high advisories in `mysql2`.** It is a transitive
+    dependency of the `prisma` **CLI**, which is a devDependency; it is never
+    imported and does not appear in `.next/server`, so it is not reachable at
+    runtime. `npm audit fix --force` would downgrade Prisma to 6.x.
+23. **Korean text is not consistently marked `lang="ko"`.** Nine components do
+    it; a screen reader will read the rest with an English voice.
+24. **`global-error.tsx` hardcodes hex colours**, against the project's own
+    token rule. It replaces the root layout, so Tailwind may not have loaded —
+    the exception is justified but was undocumented.
+25. **`noUncheckedIndexedAccess` is off.** `strict` is on and the codebase has
+    no `any`, no `@ts-ignore` and no non-null assertions, but array indexing is
+    still unchecked. Turning it on would surface real work across the codebase.
+26. **`redactPaths` splits paths containing spaces.** The sensitive part — the
+    home directory and username — is removed, but a path like
+    `/Users/x/Korean Learning Tool/...` leaves a readable fragment behind.
+
 ## Environment Variables
 
 Names only — never commit or print values.
@@ -999,6 +1100,8 @@ Names only — never commit or print values.
 | `YOUTUBE_CLIENT_SECRET` | Yes | Google OAuth secret. Blank → mock uploader |
 | `YOUTUBE_REDIRECT_URI` | Yes | Must match the registered URI exactly |
 | `YOUTUBE_TOKEN_KEY` | Yes | 32 bytes. Encrypts stored tokens; blank blocks connecting |
+| `ALLOW_REMOTE_ACCESS` | Yes | `true` serves non-localhost hosts. Only with your own auth in front |
+| `LOG_LEVEL` | Yes | `debug`\|`info`\|`warn`\|`error`. Defaults to info in production |
 
 Validated in `src/lib/env.ts` via `getServerEnv()`, which throws a descriptive
 error on misconfiguration. `getFeatureAvailability()` derives booleans for the

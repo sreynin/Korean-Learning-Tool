@@ -16,6 +16,7 @@ import {
   makeScene,
   makeStoredScenes,
 } from "./helpers/factories";
+import { jsonRequest } from "./helpers/http";
 import { createTestDatabase } from "./helpers/test-db";
 import type { TestDatabase } from "./helpers/test-db";
 
@@ -256,9 +257,9 @@ describe("marking a project published", () => {
     const seeded = await seed();
 
     const response = await PUBLISH(
-      new Request("http://test/publish", {
-        method: "PUT",
-        body: JSON.stringify({ published: true, youtubeUrl: "not a url" }),
+      jsonRequest("http://test/publish", "PUT", {
+        published: true,
+        youtubeUrl: "not a url",
       }),
       { params: Promise.resolve({ id: seeded.id }) },
     );

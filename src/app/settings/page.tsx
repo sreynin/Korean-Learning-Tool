@@ -5,7 +5,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { getFeatureAvailability, getServerEnv } from "@/lib/env";
-import { listProjects } from "@/server/services/project-service";
+import { countProjects } from "@/server/services/project-service";
 import { getPublishCapability } from "@/server/services/publish-service";
 
 export const metadata: Metadata = {
@@ -20,7 +20,7 @@ export default async function SettingsPage({
 }: PageProps<"/settings">) {
   const env = getServerEnv();
   const features = getFeatureAvailability();
-  const projectCount = (await listProjects()).length;
+  const projectCount = await countProjects();
   const publishCapability = await getPublishCapability();
   const notice = toNotice(await searchParams);
 

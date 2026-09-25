@@ -4,11 +4,27 @@ import { renderFilePath, renderFileSize } from "@/server/render/render-storage";
 import { getRenderJobRepository } from "@/server/repositories/render-job-repository";
 import { syncDerivedState } from "@/server/services/pipeline-service";
 import { getYouTubeClient } from "@/server/youtube";
+import { ConcurrencyGate } from "@/server/render/render-queue";
 import type { ProjectRepository } from "@/server/repositories";
 import type { PublishJobRepository } from "@/server/repositories/publish-job-repository";
 import type { RenderJobRepository } from "@/server/repositories/render-job-repository";
 import type { YouTubeClient } from "@/server/youtube/youtube-client";
 import type { PublishJob } from "@/types/youtube";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("publish");
+
+/**
+ * How long one publish may run before it is abandoned.
+ *
+ * Generous, because it covers a large upload *and* YouTube's transcoding,
+ * which this app does not control. The point is only that it is finite: an
+ * upload that stalls used to hold the project's publish slot for ever.
+ */
+export const PUBLISH_TIMEOUT_MS = 45 * 60 * 1000;
+
+/** Uploads are network-bound rather than CPU-bound, so the cap is looser. */
+export const MAX_CONCURRENT_PUBLISHES = 2;
 
 /**
  * Hands a publish job to whatever will execute it.
@@ -25,6 +41,7 @@ export class InProcessPublishQueue implements PublishQueue {
   private readonly jobs: PublishJobRepository;
   private readonly projects: ProjectRepository;
   private readonly onSettled?: () => void;
+  private readonly gate: ConcurrencyGate;
 
   constructor(options: {
     client?: YouTubeClient;
@@ -32,11 +49,15 @@ export class InProcessPublishQueue implements PublishQueue {
     projects?: ProjectRepository;
     /** Test hook: called after a job reaches a terminal state. */
     onSettled?: () => void;
+    maxConcurrent?: number;
   } = {}) {
     this.client = options.client ?? getYouTubeClient();
     this.jobs = options.jobs ?? getPublishJobRepository();
     this.projects = options.projects ?? getProjectRepository();
     this.onSettled = options.onSettled;
+    this.gate = new ConcurrencyGate(
+      options.maxConcurrent ?? MAX_CONCURRENT_PUBLISHES,
+    );
   }
 
   async enqueue(jobId: string): Promise<void> {
@@ -44,18 +65,21 @@ export class InProcessPublishQueue implements PublishQueue {
 
     // Deliberately not awaited: the caller is an HTTP request.
     void this.run(jobId).catch((error) => {
-      console.error("[publish] worker crashed", error);
+      log.error("worker crashed", error);
     });
   }
 
   /** Exposed so the tests and a worker process can drive a job to the end. */
   async run(jobId: string): Promise<void> {
-    await runPublishJob({
-      jobId,
-      client: this.client,
-      jobs: this.jobs,
-      projects: this.projects,
-    });
+    await this.gate.run(() =>
+      runPublishJob({
+        jobId,
+        client: this.client,
+        jobs: this.jobs,
+        projects: this.projects,
+        signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS),
+      }),
+    );
     this.onSettled?.();
   }
 }
@@ -146,9 +170,12 @@ export async function runPublishJob(options: {
       await jobs.markCompleted(jobId);
     }
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "The publish failed unexpectedly.";
-    console.error("[publish] job failed", jobId, message);
+    const message = signal?.aborted
+      ? "The publish was stopped before it finished. If the upload had already started, check the channel before trying again so you do not upload it twice."
+      : error instanceof Error
+        ? error.message
+        : "The publish failed unexpectedly.";
+    log.error("job failed", { jobId, reason: message });
     await jobs.markFailed(jobId, message);
   }
 

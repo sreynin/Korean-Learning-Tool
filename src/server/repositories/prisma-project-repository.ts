@@ -8,7 +8,10 @@ import {
   toMetadataColumns,
   toStoryboardColumns,
 } from "@/server/repositories/project-mapper";
-import type { ProjectRepository } from "@/server/repositories/project-repository";
+import type {
+  ProjectRepository,
+  ProjectSummary,
+} from "@/server/repositories/project-repository";
 import type { ProjectListFilters, VideoProject } from "@/types/project";
 
 /** Everything the domain object needs, in one query. */
@@ -33,27 +36,44 @@ export class PrismaProjectRepository implements ProjectRepository {
   }
 
   async list(filters: ProjectListFilters = {}): Promise<VideoProject[]> {
-    const search = filters.search?.trim();
-
     const rows = await this.db.project.findMany({
-      where: {
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.format ? { format: filters.format } : {}),
-        ...(filters.level ? { level: filters.level } : {}),
-        ...(search
-          ? {
-              OR: [
-                { title: { contains: search } },
-                { topic: { contains: search } },
-              ],
-            }
-          : {}),
-      },
+      where: this.whereFrom(filters),
       include: INCLUDE_RELATIONS,
       orderBy: { updatedAt: "desc" },
+      ...(filters.limit ? { take: filters.limit } : {}),
     });
 
     return rows.map(toDomain);
+  }
+
+  /** The same `where` as `list`, so a count can never drift from a listing. */
+  private whereFrom(filters: ProjectListFilters) {
+    const search = filters.search?.trim();
+
+    return {
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.format ? { format: filters.format } : {}),
+      ...(filters.level ? { level: filters.level } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search } },
+              { topic: { contains: search } },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  async count(filters: ProjectListFilters = {}): Promise<number> {
+    return this.db.project.count({ where: this.whereFrom(filters) });
+  }
+
+  async summaries(): Promise<ProjectSummary[]> {
+    return this.db.project.findMany({
+      select: { id: true, format: true, status: true },
+      orderBy: { updatedAt: "desc" },
+    }) as Promise<ProjectSummary[]>;
   }
 
   async findById(id: string): Promise<VideoProject | null> {

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AppError, ValidationError, isAppError } from "@/server/errors";
+import { assertLocalRequest, assertSameOrigin } from "@/server/security";
 import type { ApiFailure, ApiSuccess, FieldIssue } from "@/types/api";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("api");
 
 export function jsonOk<T>(data: T, status = 200): NextResponse<ApiSuccess<T>> {
   return NextResponse.json({ ok: true, data }, { status });
@@ -27,19 +31,36 @@ export function jsonError(error: AppError): NextResponse<ApiFailure> {
 
 /**
  * Wraps a route handler so unexpected throws never leak a stack trace to the
- * client. Known `AppError`s keep their status; anything else becomes a 500.
+ * client, and so every request passes the same guards.
+ *
+ * The guards run before the handler, which is what makes them impossible to
+ * forget: a new route gets them by being a route.
+ *
+ * They need the `Request` to read, so **every handler takes one**, including
+ * the ones that ignore it. A mutating handler written without it would be
+ * silently unguarded, which is the exact failure this wrapper exists to
+ * prevent, and `tests/security.test.ts` asserts no route omits it.
  */
 export function route<Args extends unknown[]>(
   handler: (...args: Args) => Promise<NextResponse>,
 ) {
   return async (...args: Args): Promise<NextResponse> => {
     try {
+      const request = args.find(
+        (arg): arg is Request => arg instanceof Request,
+      );
+
+      if (request) {
+        assertLocalRequest(request);
+        assertSameOrigin(request);
+      }
+
       return await handler(...args);
     } catch (error) {
       if (isAppError(error)) {
         return jsonError(error);
       }
-      console.error("[api] unhandled error", error);
+      log.error("unhandled error", error);
       return jsonError(
         new AppError("internal_error", "Something went wrong on our end.", 500),
       );
@@ -52,6 +73,18 @@ export async function parseJsonBody<T>(
   request: Request,
   schema: z.ZodType<T>,
 ): Promise<T> {
+  // `Request.json()` parses the body whatever the content type claims, which
+  // is what let an HTML form with `enctype="text/plain"` reach these routes as
+  // a *simple* cross-origin request — no CORS preflight to stop it. Requiring
+  // a JSON content type forces any cross-origin caller into a preflight the
+  // browser will refuse, independently of the Origin check in `route()`.
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new ValidationError(
+      "Request body must be sent as application/json.",
+    );
+  }
+
   let raw: unknown;
   try {
     raw = await request.json();

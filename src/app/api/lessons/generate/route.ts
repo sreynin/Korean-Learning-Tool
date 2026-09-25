@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { jsonOk, parseJsonBody, route } from "@/server/http";
+import { GENERATION_LIMIT, enforceRateLimit } from "@/server/rate-limit";
 import { generateLesson } from "@/server/services/lesson-service";
 import {
   CONTENT_STYLES,
@@ -24,6 +25,8 @@ const generateLessonSchema = z.object({
 });
 
 export const POST = route(async (request: Request) => {
+  enforceRateLimit("lesson-generate", GENERATION_LIMIT);
+
   const input = await parseJsonBody(request, generateLessonSchema);
   const { lesson, model } = await generateLesson(input);
 

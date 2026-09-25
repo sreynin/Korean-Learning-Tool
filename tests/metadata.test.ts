@@ -11,6 +11,7 @@ import type { ProjectRepository } from "@/server/repositories";
 import type { StoredMetadata, VideoMetadata } from "@/types/metadata";
 import type { VideoProject } from "@/types/project";
 import { makeLesson, makeProject } from "./helpers/factories";
+import { jsonRequest } from "./helpers/http";
 import { createTestDatabase } from "./helpers/test-db";
 import type { TestDatabase } from "./helpers/test-db";
 
@@ -43,10 +44,7 @@ function context<T extends Record<string, string>>(params: T) {
 }
 
 function post(body?: unknown) {
-  return new Request("http://test/metadata", {
-    method: "POST",
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  return jsonRequest("http://test/metadata", "POST", body);
 }
 
 async function seedProject(
@@ -222,10 +220,7 @@ describe("editing", () => {
     };
 
     const response = await SAVE(
-      new Request("http://test/metadata", {
-        method: "PUT",
-        body: JSON.stringify({ ...edited, format: "shorts" }),
-      }),
+      jsonRequest("http://test/metadata", "PUT", { ...edited, format: "shorts" }),
       context({ id: project.id }),
     );
     const body = (await response.json()) as { ok: true; data: VideoProject };
@@ -249,12 +244,9 @@ describe("editing", () => {
     assert.ok(first.ok);
 
     const response = await SAVE(
-      new Request("http://test/metadata", {
-        method: "PUT",
-        body: JSON.stringify({
-          ...contentOf(first.data, "shorts"),
-          title: "x".repeat(METADATA_LIMITS.title + 1),
-        }),
+      jsonRequest("http://test/metadata", "PUT", {
+        ...contentOf(first.data, "shorts"),
+        title: "x".repeat(METADATA_LIMITS.title + 1),
       }),
       context({ id: project.id }),
     );

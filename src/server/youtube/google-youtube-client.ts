@@ -10,6 +10,9 @@ import type {
   UploadResult,
   YouTubeClient,
 } from "@/server/youtube/youtube-client";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("youtube");
 
 /**
  * YouTube Data API v3, over plain HTTP.
@@ -176,7 +179,7 @@ export class GoogleYouTubeClient implements YouTubeClient {
         },
       );
     } catch (error) {
-      console.error("[youtube] thumbnail upload failed", error);
+      log.error("thumbnail upload failed", error);
       return "The video uploaded, but the thumbnail could not be sent. Set it on YouTube.";
     }
 
@@ -188,7 +191,7 @@ export class GoogleYouTubeClient implements YouTubeClient {
       return "The video uploaded, but YouTube would not accept a custom thumbnail. Channels must be verified before they can set one.";
     }
 
-    console.error("[youtube] thumbnail rejected", response.status);
+    log.error("thumbnail rejected", { status: response.status });
     return `The video uploaded, but YouTube rejected the thumbnail (HTTP ${response.status}). Set it on YouTube.`;
   }
 
@@ -227,7 +230,7 @@ export class GoogleYouTubeClient implements YouTubeClient {
         }),
       });
     } catch (error) {
-      console.error("[youtube] could not open upload session", error);
+      log.error("could not open upload session", error);
       throw new AppError(
         "generation_failed",
         "Could not reach YouTube to start the upload.",
@@ -277,7 +280,7 @@ export class GoogleYouTubeClient implements YouTubeClient {
       });
     } catch (error) {
       if (signal?.aborted) throw error;
-      console.error("[youtube] chunk upload failed", error);
+      log.error("chunk upload failed", error);
       throw new AppError(
         "generation_failed",
         "The connection to YouTube dropped during the upload.",
@@ -304,7 +307,7 @@ export class GoogleYouTubeClient implements YouTubeClient {
     try {
       response = await fetch(url, init);
     } catch (error) {
-      console.error("[youtube] request failed", error);
+      log.error("request failed", error);
       throw new AppError(
         "generation_failed",
         "Could not reach YouTube. Check your connection and try again.",
@@ -351,7 +354,7 @@ interface VideoResource {
  */
 async function toUploadError(response: Response, action: string): Promise<AppError> {
   const body = await response.text().catch(() => "");
-  console.error(`[youtube] failed to ${action}`, response.status, body.slice(0, 500));
+  log.error(`failed to ${action}`, { status: response.status, body: body.slice(0, 500) });
 
   if (response.status === 401) {
     return new ConflictError(

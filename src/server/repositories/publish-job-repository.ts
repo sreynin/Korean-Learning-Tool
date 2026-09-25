@@ -9,6 +9,16 @@ import type {
   ThumbnailSource,
   YouTubeVisibility,
 } from "@/types/youtube";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("publish");
+
+/**
+ * How long a publish may sit in an active state before it is assumed
+ * abandoned. Longer than the render cut-off, because a large upload plus
+ * YouTube's own transcoding legitimately takes a while.
+ */
+export const STALE_PUBLISH_MS = 60 * 60 * 1000;
 
 /**
  * Persistence for publish jobs.
@@ -69,6 +79,10 @@ export class PublishJobRepository {
     provider: string;
   }): Promise<PublishJob | null> {
     const { projectId, format, settings, provider } = options;
+
+    // A job abandoned by a crashed process would otherwise hold the slot for
+    // ever — see `expireStale`.
+    await this.expireStale();
 
     return this.db.$transaction(async (tx) => {
       const active = await tx.publishJob.findFirst({
@@ -180,6 +194,52 @@ export class PublishJobRepository {
       where: { id },
       data: { warningMessage: warningMessage.slice(0, 500) },
     });
+  }
+
+  /**
+   * Fails jobs left running by a process that is no longer here.
+   *
+   * Same reasoning as the render queue: `createIfIdle` refuses while a job is
+   * active, so an abandoned row used to lock the project out of publishing
+   * permanently.
+   *
+   * One difference matters. A publish that got as far as `processing` has
+   * **already put a video on YouTube**, and the row knows its id. Expiring it
+   * must say so, because the creator's next step is to check the channel
+   * rather than simply publish again and end up with two.
+   */
+  async expireStale(olderThanMs = STALE_PUBLISH_MS): Promise<number> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+
+    const abandoned = await this.db.publishJob.findMany({
+      where: {
+        status: { in: ACTIVE_PUBLISH_STATUSES },
+        OR: [
+          { startedAt: { lt: cutoff } },
+          { startedAt: null, createdAt: { lt: cutoff } },
+        ],
+      },
+      select: { id: true, videoId: true },
+    });
+
+    for (const job of abandoned) {
+      await this.db.publishJob.update({
+        where: { id: job.id },
+        data: {
+          status: "failed",
+          errorMessage: job.videoId
+            ? `The publish stopped without finishing — the app was probably restarted while it was running. The video reached YouTube as ${job.videoId}; check the channel before publishing again, or you will upload it twice.`
+            : "The upload stopped without finishing — the app was probably restarted while it was running. Start it again.",
+          completedAt: new Date(),
+        },
+      });
+    }
+
+    if (abandoned.length > 0) {
+      log.warn(`released ${abandoned.length} abandoned job(s)`);
+    }
+
+    return abandoned.length;
   }
 
   /** Jobs a worker should pick up, oldest first. */

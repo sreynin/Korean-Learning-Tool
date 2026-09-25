@@ -3,6 +3,7 @@ import { NotFoundError } from "@/server/errors";
 import { defaultVoiceSettings } from "@/types/voice";
 import { DEFAULT_CAPTION_SETTINGS } from "@/types/caption";
 import { getProjectRepository } from "@/server/repositories";
+import type { ProjectSummary } from "@/server/repositories/project-repository";
 import {
   PIPELINE_STAGES,
   producesLongForm,
@@ -127,31 +128,55 @@ export async function deleteProject(id: string): Promise<void> {
   }
 }
 
-export async function getProjectStats(): Promise<ProjectStats> {
-  const projects = await listProjects();
-  return summarise(projects);
+/** How many projects match, without loading a single lesson or scene. */
+export async function countProjects(
+  filters: ProjectListFilters = {},
+): Promise<number> {
+  return getProjectRepository().count(filters);
 }
 
+export async function getProjectStats(): Promise<ProjectStats> {
+  return summarise(await getProjectRepository().summaries());
+}
+
+/**
+ * The dashboard.
+ *
+ * The tiles are computed from a three-column projection rather than from full
+ * projects: they are six integers, and loading every lesson, scene, audio row
+ * and render job in the library to produce them made the dashboard the most
+ * expensive page in the app. The three sections still need real projects, but
+ * only a handful each, so they are fetched with a limit.
+ */
 export async function getDashboardData(): Promise<DashboardData> {
-  const projects = await listProjects();
+  const repository = getProjectRepository();
+
+  const [summaries, recent, drafts, completed] = await Promise.all([
+    repository.summaries(),
+    repository.list({ limit: DASHBOARD_SECTION_LIMIT }),
+    repository.list({ status: "draft", limit: DASHBOARD_SECTION_LIMIT }),
+    repository.list({ status: "completed", limit: DASHBOARD_SECTION_LIMIT }),
+  ]);
+
+  // `published` is a separate status but belongs in the same section, and a
+  // status filter takes one value — so it is fetched alongside and merged.
+  const published = await repository.list({
+    status: "published",
+    limit: DASHBOARD_SECTION_LIMIT,
+  });
 
   return {
-    stats: summarise(projects),
-    recent: projects.slice(0, DASHBOARD_SECTION_LIMIT),
-    drafts: projects
-      .filter((project) => project.status === "draft")
-      .slice(0, DASHBOARD_SECTION_LIMIT),
-    completed: projects
-      .filter(
-        (project) =>
-          project.status === "completed" || project.status === "published",
-      )
+    stats: summarise(summaries),
+    recent,
+    drafts,
+    completed: [...completed, ...published]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, DASHBOARD_SECTION_LIMIT),
   };
 }
 
-function summarise(projects: VideoProject[]): ProjectStats {
-  const countWhere = (predicate: (project: VideoProject) => boolean) =>
+function summarise(projects: ProjectSummary[]): ProjectStats {
+  const countWhere = (predicate: (project: ProjectSummary) => boolean) =>
     projects.reduce((total, project) => total + (predicate(project) ? 1 : 0), 0);
 
   return {

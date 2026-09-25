@@ -2,6 +2,9 @@ import { createHmac, randomBytes } from "node:crypto";
 import { getServerEnv } from "@/lib/env";
 import { AppError, ConflictError } from "@/server/errors";
 import { getTokenKey, safeEquals } from "@/server/youtube/token-store";
+import { createLogger } from "@/server/logger";
+
+const log = createLogger("youtube");
 
 /**
  * Google OAuth 2.0, authorization-code flow.
@@ -199,7 +202,7 @@ export async function revokeToken(token: string): Promise<boolean> {
     });
     return response.ok;
   } catch (error) {
-    console.error("[youtube] could not revoke token", error);
+    log.error("could not revoke token", error);
     return false;
   }
 }
@@ -216,7 +219,7 @@ async function postToken(
       body: new URLSearchParams(body).toString(),
     });
   } catch (error) {
-    console.error("[youtube] token endpoint unreachable", error);
+    log.error("token endpoint unreachable", error);
     throw new AppError(
       "generation_failed",
       "Could not reach Google. Check your connection and try again.",
@@ -239,7 +242,7 @@ async function postToken(
     // `error_description` is Google's own wording and is safe to surface: it
     // describes the request, never the credential.
     const detail = payload.error_description ?? payload.error ?? "unknown error";
-    console.error("[youtube] token exchange failed", response.status, detail);
+    log.error("token exchange failed", { status: response.status, detail });
 
     if (payload.error === "invalid_grant") {
       throw new ConflictError(

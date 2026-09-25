@@ -1,4 +1,5 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { createLogger, redactPaths } from "@/server/logger";
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -6,6 +7,7 @@ import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import ffmpegStatic from "ffmpeg-static";
 
 const execFileAsync = promisify(execFile);
+const log = createLogger("render");
 
 /**
  * Where the encoder comes from.
@@ -19,6 +21,40 @@ function resolveBinary(
   bundled: string | null,
 ): string | null {
   return onPath(systemName) ?? bundled;
+}
+
+/**
+ * Every filter this renderer cannot work without.
+ *
+ * `drawtext` is the whole on-screen caption layer, and it is **optional** in
+ * an FFmpeg build — it needs libfreetype at compile time. Homebrew's
+ * `ffmpeg` ships without it often enough that this is not a theoretical
+ * concern: on a machine with one of those builds, every render used to fail
+ * at the first scene carrying text, after the encoder had already been
+ * chosen and the job started.
+ */
+const REQUIRED_FILTERS = ["drawtext"] as const;
+
+/**
+ * Whether a binary can actually do the job, rather than merely existing.
+ *
+ * Resolution used to pick on presence alone. Asking the binary what filters
+ * it has is one cheap call, cached for the life of the process, and it turns
+ * a mid-render failure into a choice made before anything starts.
+ */
+function supportsRequiredFilters(binary: string): boolean {
+  try {
+    const output = execFileSync(binary, ["-hide_banner", "-filters"], {
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+
+    return REQUIRED_FILTERS.every((filter) =>
+      new RegExp(`\\b${filter}\\b`).test(output),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function onPath(name: string): string | null {
@@ -37,16 +73,41 @@ function onPath(name: string): string | null {
   return null;
 }
 
-export function ffmpegPath(): string {
-  const resolved = resolveBinary("ffmpeg", ffmpegStatic);
+let cachedFfmpeg: string | null = null;
 
-  if (!resolved) {
+export function ffmpegPath(): string {
+  if (cachedFfmpeg) return cachedFfmpeg;
+
+  const system = onPath("ffmpeg");
+  const candidates = [system, ffmpegStatic].filter(
+    (candidate): candidate is string => Boolean(candidate),
+  );
+
+  if (candidates.length === 0) {
     throw new Error(
       "No FFmpeg binary is available. Install FFmpeg, or reinstall dependencies so ffmpeg-static is present.",
     );
   }
 
-  return resolved;
+  // Preference order is unchanged — system first — but a candidate that
+  // cannot draw text is skipped rather than chosen and discovered later.
+  const usable = candidates.find(supportsRequiredFilters);
+
+  if (!usable) {
+    throw new Error(
+      `No usable FFmpeg binary: none of the candidates support ${REQUIRED_FILTERS.join(", ")}. On macOS, \`brew install ffmpeg\` builds one with libfreetype, or remove the system FFmpeg from PATH to use the bundled build.`,
+    );
+  }
+
+  if (system && usable !== system) {
+    log.warn("system FFmpeg cannot draw text; using the bundled build", {
+      system,
+      using: usable,
+    });
+  }
+
+  cachedFfmpeg = usable;
+  return usable;
 }
 
 export function ffprobePath(): string {
@@ -102,7 +163,13 @@ export async function runFfmpeg(
       } else if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`FFmpeg exited with code ${code}. ${lastError(stderr)}`));
+        // FFmpeg prints its working paths into stderr, and this message is
+        // stored on the job row and served to the browser.
+        reject(
+          new Error(
+            `FFmpeg exited with code ${code}. ${redactPaths(lastError(stderr))}`,
+          ),
+        );
       }
     });
   });
