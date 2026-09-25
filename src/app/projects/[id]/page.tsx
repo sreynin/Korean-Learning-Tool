@@ -101,10 +101,11 @@ export default async function ProjectEditorPage({
       </div>
 
       <Alert tone="info" className="mb-6">
-        Lesson, storyboard, captions, narration, YouTube metadata, and MP4
-        rendering are available. Rendering is started through the API or{" "}
-        <code>npm run render:worker</code> — it has no button here yet. Asset
-        generation is not implemented.
+        Lesson, storyboard, captions, narration, preview, MP4 rendering, and
+        YouTube publishing all work from here. Starting a render is the
+        exception — use the Render button on the Projects page, the API, or{" "}
+        <code>npm run render:worker</code>. Scene imagery is not generated:
+        every backdrop is a placeholder gradient.
       </Alert>
 
       <div className="mb-6 flex flex-col gap-6">

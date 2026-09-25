@@ -135,7 +135,7 @@ export function GenerationProgress({
         {finished ? (
           <Alert tone="info" className="mt-5">
             The lesson is ready to review and edit. Open the project to build
-            its storyboard; assets, voice, and video are not implemented yet.
+            its storyboard, then voice, caption, render, and publish it.
           </Alert>
         ) : null}
       </CardContent>
