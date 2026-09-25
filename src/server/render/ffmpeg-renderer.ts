@@ -101,11 +101,19 @@ export class FfmpegRenderer implements Renderer {
       const output = renderFilePath(workspace.outputFileName);
       await concatenate(segments, workspace.directory, output, signal);
 
+      const posterFileName = await extractPoster(
+        output,
+        workspace.posterFileName,
+        posterOffset(scenes),
+        signal,
+      );
+
       const { size } = await stat(output);
       await onProgress(100);
 
       return {
         outputFileName: workspace.outputFileName,
+        posterFileName,
         contentType: RENDER_CONTENT_TYPE,
         byteSize: size,
       };
@@ -216,6 +224,71 @@ export class FfmpegRenderer implements Renderer {
     );
 
     await runFfmpeg(args, { signal });
+  }
+}
+
+/**
+ * Picks the moment the thumbnail is taken from.
+ *
+ * A hook scene often carries no on-screen text, so the opening second of the
+ * video is a bare gradient — a whole library of those is unreadable. This
+ * lands one second into the first scene that actually draws something, which
+ * is still a real frame of the finished video and not a composed image. If no
+ * scene has text, the opening second is as good as any.
+ */
+export function posterOffset(scenes: Scene[]): number {
+  let elapsed = 0;
+
+  for (const scene of scenes) {
+    const hasText = Boolean(
+      scene.koreanText || scene.englishText || scene.romanization,
+    );
+    // Only worth jumping to if the scene is long enough to still be on screen.
+    if (hasText && scene.duration >= 2) return elapsed + 1;
+    elapsed += scene.duration;
+  }
+
+  return 1;
+}
+
+/**
+ * Grabs a still for the library thumbnail.
+ *
+ * Taken a second into its scene, so it lands after any fade-in rather than on
+ * an empty frame. A render is still a success if this fails — a missing
+ * thumbnail is a cosmetic loss, and the card falls back to the gradient.
+ */
+async function extractPoster(
+  videoPath: string,
+  posterFileName: string,
+  offsetSeconds: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  try {
+    await runFfmpeg(
+      [
+        "-y",
+        "-ss",
+        String(offsetSeconds),
+        "-i",
+        videoPath,
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=640:-2",
+        "-q:v",
+        "4",
+        renderFilePath(posterFileName),
+      ],
+      { signal },
+    );
+
+    return posterFileName;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+
+    console.error("[render] could not extract a poster frame", error);
+    return null;
   }
 }
 

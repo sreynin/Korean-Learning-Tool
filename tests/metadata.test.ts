@@ -369,7 +369,11 @@ describe("metadata does not disturb the rest of the project", () => {
     assert.ok(reloaded?.lesson, "the lesson survives");
     assert.equal(reloaded?.title, project.title);
     assert.equal(reloaded?.hasRenderOutput, false);
-    assert.equal(reloaded?.status, "in_progress", "a draft moves on once work exists");
+    assert.equal(
+      reloaded?.status,
+      "lesson_ready",
+      "status follows the content, and the content is a lesson",
+    );
   });
 
   test("writing one cut leaves the other cut's document alone", async () => {

@@ -20,12 +20,15 @@ export default async function ProjectsPage({
   const parsed = projectListFiltersSchema.safeParse({
     status: first(params.status),
     format: first(params.format),
+    level: first(params.level),
     search: first(params.search),
   });
   const filters: ProjectListFilters = parsed.success ? parsed.data : {};
 
   const projects = await listProjects(filters);
-  const isFiltered = Boolean(filters.status || filters.format || filters.search);
+  const isFiltered = Boolean(
+    filters.status || filters.format || filters.level || filters.search,
+  );
 
   return (
     <>

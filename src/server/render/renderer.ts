@@ -18,7 +18,9 @@ export interface RenderRequest {
 export interface RenderResult {
   /** File name inside the render directory. */
   outputFileName: string;
-  /** Media type of that file, e.g. `video/mp4`. */
+  /** Still taken from it for the library thumbnail, or null if none was made. */
+  posterFileName: string | null;
+  /** Media type of the output, e.g. `video/mp4`. */
   contentType: string;
   byteSize: number;
 }

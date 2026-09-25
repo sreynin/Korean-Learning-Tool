@@ -48,6 +48,7 @@ class BlockingRenderer implements Renderer {
     await request.onProgress(100);
     return {
       outputFileName: `${request.jobId}.mp4`,
+      posterFileName: null,
       contentType: "video/mp4",
       byteSize: 1024,
     };

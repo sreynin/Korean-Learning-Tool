@@ -35,6 +35,7 @@ class SucceedingRenderer implements Renderer {
     }
     return {
       outputFileName: `${request.jobId}.mp4`,
+      posterFileName: null,
       contentType: "video/mp4",
       byteSize: 2048,
     };

@@ -62,7 +62,8 @@ export const updateProjectSchema = z
     description: description.optional(),
     format: z.enum(VIDEO_FORMATS).optional(),
     level: z.enum(PROFICIENCY_LEVELS).optional(),
-    status: z.enum(PROJECT_STATUSES).optional(),
+    // No `status`: it is derived from what the project contains, so letting a
+    // request set it would just be overwritten on the next save.
     targetLanguage: z.enum(TARGET_LANGUAGES).optional(),
     contentStyle: z.enum(CONTENT_STYLES).optional(),
     visualStyle: z.enum(VISUAL_STYLES).optional(),
@@ -77,6 +78,7 @@ export const updateProjectSchema = z
 export const projectListFiltersSchema = z.object({
   status: z.enum(PROJECT_STATUSES).optional(),
   format: z.enum(VIDEO_FORMATS).optional(),
+  level: z.enum(PROFICIENCY_LEVELS).optional(),
   search: z.string().trim().max(200).optional(),
 });
 

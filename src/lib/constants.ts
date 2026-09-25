@@ -37,8 +37,13 @@ export const STATUS_META: Record<
   { label: string; tone: BadgeTone }
 > = {
   draft: { label: "Draft", tone: "neutral" },
-  in_progress: { label: "In progress", tone: "warning" },
+  lesson_ready: { label: "Lesson ready", tone: "info" },
+  scenes_ready: { label: "Scenes ready", tone: "info" },
+  voice_ready: { label: "Voice ready", tone: "accent" },
+  ready_to_render: { label: "Ready to render", tone: "accent" },
+  rendering: { label: "Rendering", tone: "warning" },
   completed: { label: "Completed", tone: "success" },
+  published: { label: "Published", tone: "brand" },
 };
 
 export const FORMAT_META: Record<

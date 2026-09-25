@@ -5,6 +5,7 @@ import { metadataFormats } from "@/types/metadata";
 import type { ProjectRepository } from "@/server/repositories";
 import type {
   PipelineStage,
+  ProjectStatus,
   ProjectPipeline,
   StageState,
   StageStatus,
@@ -119,6 +120,33 @@ function deriveRenderStatus(project: VideoProject): StageStatus {
   return "pending";
 }
 
+/**
+ * Where the project has got to, from what it actually contains.
+ *
+ * The order matters: each status is the furthest point the project has
+ * genuinely reached, so the checks run backwards from the end. Nothing here
+ * can be set by hand, with one exception — `published` reflects the creator
+ * telling us they uploaded it, because no code does that yet.
+ */
+export function deriveProjectStatus(project: VideoProject): ProjectStatus {
+  if (project.publishedAt) return "published";
+  if (project.hasRenderOutput) return "completed";
+  if (project.latestRender && isActiveRender(project.latestRender.status)) {
+    return "rendering";
+  }
+
+  const scenes = project.scenes?.scenes ?? [];
+  if (scenes.length === 0) return project.lesson ? "lesson_ready" : "draft";
+
+  const voiced = scenes.every((scene) => scene.audio !== null);
+
+  // "Ready to render" is a real claim, so it means every input a good render
+  // needs is present: a voiced storyboard with captions the creator chose.
+  if (voiced && project.captionsConfigured) return "ready_to_render";
+  if (voiced) return "voice_ready";
+  return "scenes_ready";
+}
+
 /** True when the reconciled pipeline differs from what is stored. */
 export function pipelineDiffers(
   current: ProjectPipeline | undefined,
@@ -130,22 +158,24 @@ export function pipelineDiffers(
 }
 
 /**
- * Recomputes and persists a project's pipeline. Called after anything that
- * changes what the project contains, so the four callers never each hold their
- * own idea of what "complete" means.
+ * Recomputes and persists everything derived from a project's content — its
+ * pipeline stages and its status. Called after anything that changes what the
+ * project contains, so no caller holds its own idea of what "complete" means.
  */
-export async function syncPipeline(
+export async function syncDerivedState(
   project: VideoProject,
   repository: ProjectRepository = getProjectRepository(),
 ): Promise<VideoProject> {
-  const next = reconcilePipeline(project);
+  const pipeline = reconcilePipeline(project);
+  const status = deriveProjectStatus(project);
 
-  if (!pipelineDiffers(project.pipeline, next)) {
+  if (!pipelineDiffers(project.pipeline, pipeline) && status === project.status) {
     return project;
   }
 
   const updated = await repository.update(project.id, {
-    pipeline: next,
+    pipeline,
+    status,
     updatedAt: new Date().toISOString(),
   });
 

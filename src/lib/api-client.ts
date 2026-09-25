@@ -89,6 +89,7 @@ function toQueryString(filters: ProjectListFilters): string {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.format) params.set("format", filters.format);
+  if (filters.level) params.set("level", filters.level);
   if (filters.search) params.set("search", filters.search);
   const query = params.toString();
   return query ? `?${query}` : "";
@@ -116,6 +117,17 @@ export const api = {
     remove: (id: string) =>
       request<{ id: string; deleted: boolean }>(`/projects/${id}`, {
         method: "DELETE",
+      }),
+
+    /** Copies the creative work into a new draft. */
+    duplicate: (id: string) =>
+      request<VideoProject>(`/projects/${id}/duplicate`, { method: "POST" }),
+
+    /** Records that the creator published it, or takes that back. */
+    setPublished: (id: string, published: boolean, youtubeUrl?: string) =>
+      request<VideoProject>(`/projects/${id}/publish`, {
+        method: "PUT",
+        body: JSON.stringify({ published, youtubeUrl }),
       }),
   },
 

@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError } from "@/server/errors";
 import { getProjectRepository } from "@/server/repositories";
 import { getProject } from "@/server/services/project-service";
-import { syncPipeline } from "@/server/services/pipeline-service";
+import { syncDerivedState } from "@/server/services/pipeline-service";
 import type { CaptionSettings } from "@/types/caption";
 import type { VideoProject } from "@/types/project";
 
@@ -26,7 +26,7 @@ export async function updateCaptionSettings(
     throw new NotFoundError(`No project found with id "${projectId}".`);
   }
 
-  return syncPipeline(updated);
+  return syncDerivedState(updated);
 }
 
 /**
@@ -55,5 +55,5 @@ export async function setPreviewReviewed(
     throw new NotFoundError(`No project found with id "${projectId}".`);
   }
 
-  return syncPipeline(updated);
+  return syncDerivedState(updated);
 }

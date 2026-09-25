@@ -3,7 +3,7 @@ import { getRenderJobRepository } from "@/server/repositories/render-job-reposit
 import { getRenderQueue } from "@/server/render";
 import { renderFilePath, renderFileSize } from "@/server/render/render-storage";
 import { getProject } from "@/server/services/project-service";
-import { syncPipeline } from "@/server/services/pipeline-service";
+import { syncDerivedState } from "@/server/services/pipeline-service";
 import { producesLongForm, producesShorts } from "@/types/project";
 import type { RenderFormat, RenderJob } from "@/types/render";
 import type { VideoProject } from "@/types/project";
@@ -40,7 +40,7 @@ export async function startRender(
   await getRenderQueue().enqueue(job.id);
 
   // Reflect the newly active job in the pipeline before returning.
-  const updated = await syncPipeline(await getProject(projectId));
+  const updated = await syncDerivedState(await getProject(projectId));
 
   return { job: (await jobs.findById(job.id)) ?? job, project: updated };
 }
@@ -89,9 +89,11 @@ export async function getRenderOutput(fileName: string): Promise<RenderOutput> {
     throw new NotFoundError("The render file is missing from disk.");
   }
 
+  const isPoster = job.posterUrl?.endsWith(`/${fileName}`) ?? false;
+
   return {
     filePath: renderFilePath(fileName),
-    contentType: job.contentType ?? "video/mp4",
+    contentType: isPoster ? "image/jpeg" : (job.contentType ?? "video/mp4"),
     byteSize: size,
   };
 }

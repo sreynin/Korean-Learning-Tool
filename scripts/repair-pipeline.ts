@@ -1,16 +1,18 @@
 /**
- * Recomputes every project's pipeline from what it actually contains.
+ * Recomputes every project's derived state — its pipeline stages and its
+ * status — from what it actually contains.
  *
  *   npm run db:repair-pipeline -- --dry-run
  *   npm run db:repair-pipeline
  *
- * Existing rows were written when stage status was set by hand, so some claim
- * stages that were never run — seeded demo projects in particular reported
- * `assets`, `render`, and `youtube` complete against code that does not exist.
+ * Existing rows were written when both were set by hand, so some claim work
+ * that was never done: seeded demo projects reported `assets`, `render`, and
+ * `youtube` complete against code that did not exist, and called themselves
+ * "completed" while containing nothing.
  *
- * Only the pipeline is touched. Lessons, storyboards, audio, and settings are
- * read but never modified, and the result is derived from those, so running
- * this twice changes nothing the second time.
+ * Only those two fields are touched. Lessons, storyboards, audio, and settings
+ * are read but never modified, and the result is derived from those, so
+ * running this twice changes nothing the second time.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -18,6 +20,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@prisma/client";
 import { toDomain } from "@/server/repositories/project-mapper";
 import {
+  deriveProjectStatus,
   pipelineDiffers,
   reconcilePipeline,
 } from "@/server/services/pipeline-service";
@@ -45,19 +48,25 @@ async function main() {
     for (const row of rows) {
       const project = toDomain(row);
       const next = reconcilePipeline(project);
+      const status = deriveProjectStatus(project);
 
-      if (!pipelineDiffers(project.pipeline, next)) continue;
+      const stagesDiffer = pipelineDiffers(project.pipeline, next);
+      const statusDiffers = status !== project.status;
+      if (!stagesDiffer && !statusDiffers) continue;
 
-      const before = summarise(project.pipeline);
-      const after = summarise(next);
       console.log(`${project.id}  ${project.title}`);
-      console.log(`  before: ${before || "(none)"}`);
-      console.log(`  after : ${after || "(none)"}`);
+      if (statusDiffers) {
+        console.log(`  status: ${project.status} → ${status}`);
+      }
+      if (stagesDiffer) {
+        console.log(`  before: ${summarise(project.pipeline) || "(none)"}`);
+        console.log(`  after : ${summarise(next) || "(none)"}`);
+      }
 
       if (!dryRun) {
         await prisma.project.update({
           where: { id: project.id },
-          data: { pipeline: JSON.stringify(next) },
+          data: { pipeline: JSON.stringify(next), status },
         });
       }
       changed += 1;

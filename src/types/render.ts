@@ -41,6 +41,8 @@ export interface RenderJob {
   errorMessage: string | null;
   /** Serving URL for the finished file, or null. */
   outputUrl: string | null;
+  /** Serving URL for the still taken from it, or null. */
+  posterUrl: string | null;
   /** Media type of the finished file, or null until one exists. */
   contentType: string | null;
   /** Size of the finished file in bytes, or null until one exists. */

@@ -47,7 +47,7 @@ consumes it. Do not reintroduce a separate script stage.
 | 7 | Captions | **COMPLETE** |
 | 8 | Video Rendering | **COMPLETE** (see caveat) |
 | 9 | YouTube Metadata | **COMPLETE** (live AI path unverified) |
-| 10 | Content Library | NOT STARTED |
+| 10 | Content Library | **COMPLETE** |
 | 11 | YouTube Publishing | NOT STARTED |
 | 12 | Production Readiness | NOT STARTED |
 
@@ -69,9 +69,14 @@ seeded projects. Two things are deliberately missing:
   /api/projects/[id]/renders` or `npm run render:worker`. The pipeline stage
   reports real job state either way.
 
-**Step 10 note** — `/projects` already provides a project library with status
-filtering and search (built in Step 1). Whatever else "Content Library" covers
-is undefined and unbuilt.
+**Step 10 caveat — the library manages projects, it does not upload them.**
+Every card action runs against real data: Duplicate copies the lesson and
+storyboard, Render starts a real job, Export downloads the encoded MP4 and
+copies the stored metadata, Delete removes the project and its media.
+**Mark published records what the creator did by hand** — it writes
+`publishedAt` and an optional link, and uploads nothing. Step 11 is where
+YouTube upload lands, and until then `published` is a bookkeeping status, not
+evidence that a video exists on YouTube.
 
 **Step 9 caveat — written, never published.** The metadata is generated,
 editable, and stored, but nothing uploads it: `YOUTUBE_CLIENT_ID` and
@@ -86,7 +91,7 @@ generation belongs to the assets stage.
 | Framework | Next.js **16.3.6**, App Router, Turbopack |
 | Runtime | React 19.2.8 |
 | Language | TypeScript 5, `strict: true`, path alias `@/*` → `src/*` |
-| Frontend | React Server Components by default; 10 `"use client"` components |
+| Frontend | React Server Components by default; 23 `"use client"` components |
 | Backend | Next.js route handlers under `src/app/api/`, thin HTTP boundary only |
 | Database | **SQLite** at `data/korean-learning-lab.db`; generated audio as files under `data/audio/` |
 | ORM | **Prisma 7.10.0** with the `better-sqlite3` driver adapter |
@@ -158,6 +163,7 @@ src/
 │   ├── preview/   preview-workspace, scene-stage, playback-controls,
 │   │              preview-timeline, scene-properties, use-scene-playback
 │   ├── projects/  project-card, project-grid, project-filters,
+│   │              project-actions, project-thumbnail,
 │   │              pipeline-list, delete-project-button
 │   └── dashboard/ stats-grid, project-section
 │
@@ -195,7 +201,7 @@ src/
 │   │                  ffmpeg.ts (binary resolution + process boundary),
 │   │                  render-queue.ts (RenderQueue + runRenderJob),
 │   │                  render-storage.ts, index.ts (composition point)
-│   ├── services/      project-service.ts, lesson-service.ts,
+│   ├── services/      project-service.ts, library-service.ts, lesson-service.ts,
 │   │                  scene-service.ts, voice-service.ts,
 │   │                  caption-service.ts, pipeline-service.ts,
 │   │                  render-service.ts, metadata-service.ts
@@ -280,7 +286,8 @@ interface VideoProject {
   topic: string;
   description: string;
   format: VideoFormat;           // "shorts" | "long" | "both"
-  status: ProjectStatus;         // "draft" | "in_progress" | "completed"
+  status: ProjectStatus;         // draft | lesson_ready | scenes_ready | voice_ready
+                                 // | ready_to_render | rendering | completed | published
   level: ProficiencyLevel;       // beginner | elementary | intermediate | advanced
   targetLanguage: TargetLanguage;// korean | english | chinese
   contentStyle: ContentStyle;    // vocabulary | grammar | conversation | pronunciation
@@ -292,6 +299,9 @@ interface VideoProject {
   lesson: StoredLesson | null;
   scenes: StoredScenes | null;
   pipeline: Record<PipelineStage, { status: StageStatus; updatedAt: string | null }>;
+  publishedAt: string | null;    // set by hand — nothing uploads to YouTube yet
+  youtubeUrl: string | null;     // optional link the creator pasted
+  posterUrl: string | null;      // a still from the render, for the library card
   createdAt: string;             // ISO 8601
   updatedAt: string;             // ISO 8601
 }
@@ -306,6 +316,17 @@ Use them; do not compare format strings inline.
 `PIPELINE_STAGES` = `topic, lesson, scenes, assets, voice, captions, preview,
 render, youtube`. `STAGE_META[stage].implemented` gates the UI — everything
 except `assets` is `true`.
+
+**Status is derived too, and it outranks the stages.** `deriveProjectStatus()`
+reads the same content and returns the first of these that holds: `published`
+(the creator said so), `completed` (a render produced output), `rendering` (a
+job is in flight), `ready_to_render` (every scene voiced *and* captions
+chosen), `voice_ready` (every scene voiced), `scenes_ready`, `lesson_ready`,
+`draft`. The eight statuses are the library's filter list, so a card's badge
+and the chip that finds it are computed from one function.
+
+`published` is the only one a human sets, and it is a bookkeeping flag — see
+the Step 10 caveat in §2.
 
 **Stage status is derived, never set.** `reconcilePipeline()` in
 `src/server/services/pipeline-service.ts` computes every stage from what the
@@ -332,7 +353,8 @@ The rules:
   value may claim otherwise.
 
 Deleting an artifact reverts its stage. Run `npm run db:repair-pipeline` after
-changing these rules to bring existing rows in line.
+changing these rules to bring existing rows in line — it recomputes `status`
+as well as the stages.
 
 Changing this list is a **data migration**: `normalizeProject()` rebuilds every
 stored `pipeline` against it on read, carrying renamed stages over and
@@ -541,6 +563,8 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | GET | `/api/projects/[id]` | Fetch one project |
 | PATCH | `/api/projects/[id]` | Update a project |
 | DELETE | `/api/projects/[id]` | Delete a project |
+| POST | `/api/projects/[id]/duplicate` | Copy a project into a new draft |
+| PUT | `/api/projects/[id]/publish` | Record that the creator published it |
 | POST | `/api/lessons/generate` | Generate a lesson **without saving** |
 | POST | `/api/projects/[id]/lesson` | Generate from the project's config **and save** |
 | PUT | `/api/projects/[id]/lesson` | Save an edited lesson |
@@ -560,9 +584,28 @@ generation_failed | internal_error`. `issues[].field` is a dot path
 | GET | `/api/renders/[fileName]` | Serve a finished render (`video/mp4`, range requests) |
 | PUT | `/api/projects/[id]/preview-review` | Record that the preview was reviewed |
 
-**`GET /api/projects`** — query `status`, `format`, `search`; validated by
-`projectListFiltersSchema`. Returns `VideoProject[]`, newest-updated first.
-400 on an invalid enum value.
+**`GET /api/projects`** — query `status`, `format`, `level`, `search`;
+validated by `projectListFiltersSchema`. Returns `VideoProject[]`,
+newest-updated first. 400 on an invalid enum value. Filters combine (they
+narrow, never widen), and `search` matches title **or** topic, case-insensitively.
+
+A filter that the type, the schema, and the repository all handle can still be
+dropped by the route that reads the query string — that happened to `level`.
+`tests/library.test.ts` now walks every key of `ProjectListFilters` through the
+real handler for that reason.
+
+**`POST /api/projects/[id]/duplicate`** — no body. Copies title (suffixed
+`(copy)`, then `(copy 2)`…), topic, configuration, lesson, and storyboard into
+a new project, giving the copied scenes fresh ids. **Generated audio, renders,
+metadata, and the published record are not copied** — the copy's status is
+derived from what it actually holds, so it comes back a draft or
+`scenes_ready`, never `completed`. 404 if the original is missing.
+
+**`PUT /api/projects/[id]/publish`** — body `{ published: boolean, youtubeUrl?:
+string }`. Sets or clears `publishedAt` and the link; 400 when `youtubeUrl` is
+not a URL. **This uploads nothing** — it records something the creator did
+elsewhere. Publishing requires an existing render, so a project cannot claim to
+be published when no video was ever produced.
 
 **`POST /api/projects`** — body validated by `createProjectSchema`: `topic`
 (3–200), `format`, `level`, `targetLanguage`, `contentStyle`, `visualStyle`,
@@ -756,8 +799,8 @@ Step 6  — AI Voice               → COMPLETE (live provider unverified)
 Step 7  — Captions               → COMPLETE
 Step 8  — Video Rendering        → COMPLETE (placeholder visuals, no button)
 Step 9  — YouTube Metadata       → COMPLETE (live API path unverified)
-Step 10 — Content Library        → NEXT
-Step 11 — YouTube Publishing     → PLANNED
+Step 10 — Content Library        → COMPLETE (publishing is recorded, not uploaded)
+Step 11 — YouTube Publishing     → NEXT
 Step 12 — Production Readiness   → PLANNED
 ```
 
@@ -766,9 +809,10 @@ Step 12 — Production Readiness   → PLANNED
 Real issues found during the audit. None are hidden bugs — most are deliberate
 trade-offs that now have an expiry date.
 
-1. **All work is uncommitted.** Git holds exactly one commit
-   (`Initial commit from Create Next App`). Steps 1–3 exist only in the working
-   tree. This is the highest-risk issue in the repository.
+1. **The database is not in git, and nothing backs it up.** Every step is
+   committed and pushed to `origin/main`, but `data/` is gitignored — the
+   SQLite file, generated audio, and finished renders exist only on this
+   machine. Losing the disk loses every project.
 2. **The live AI path has never executed** for any of the three generators —
    lesson, scene, or metadata. See §2.
 3. **SQLite is single-writer and local-file.** Fine for one creator on one
@@ -796,7 +840,7 @@ trade-offs that now have an expiry date.
    about 4 seconds; a 10-minute long-form cut took 66 seconds on an M-series
    Mac. Nothing limits how many renders run at once beyond one job per
    project.
-9. **Dead code.** `api.projects.list/get/update`, `api.stats.get`, and
+9. **Dead code.** `api.projects.list/get`, `api.stats.get`, and
    `api.lessons.generate` have no callers. `/api/stats` and `/api/health` have
    no in-app consumers.
 10. **The server-only boundary is convention, not enforcement.** There is no
@@ -813,6 +857,17 @@ trade-offs that now have an expiry date.
 14. **Dashboard stat overlap.** A `"both"` project counts toward both the
     Shorts and Long Videos tiles, so they intentionally do not sum to
     "Videos Created".
+15. **`published` is self-reported.** Marking a project published writes a
+    timestamp and an optional link. Nothing checks the link, and nothing
+    uploads. Step 11 replaces the claim with an actual upload.
+16. **Export copies text through the clipboard.** `navigator.clipboard` needs
+    a focused, permitted document; when it is refused the card says so rather
+    than failing silently, but there is no fallback for a browser that blocks
+    it outright. The MP4 download is a plain link and has no such dependency.
+17. **A `both` project exports only its first cut.** The Export menu links the
+    latest render and reads the metadata for `metadataFormats(format)[0]`, so
+    a project producing both cuts shows its Short. Both documents are stored;
+    only one is reachable from the card.
 
 ## Environment Variables
 

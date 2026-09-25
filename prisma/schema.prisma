@@ -50,6 +50,12 @@ model Project {
   /// Set when the creator marks the preview reviewed. Null means not reviewed.
   previewReviewedAt DateTime?
 
+  /// Set when the creator says they published it. Nothing uploads yet, so
+  /// this is their word, not the app's.
+  publishedAt DateTime?
+  /// Where they published it, if they recorded a link.
+  youtubeUrl  String?
+
   createdAt DateTime
   updatedAt DateTime
 
@@ -173,6 +179,8 @@ model RenderJob {
   errorMessage String?
   /// File name inside the render directory. Null until a render succeeds.
   outputFileName String?
+  /// Still taken from the finished video, used as the library thumbnail.
+  posterFileName String?
   /// Media type of the finished file, e.g. video/mp4.
   contentType String?
   /// Size of the finished file in bytes.

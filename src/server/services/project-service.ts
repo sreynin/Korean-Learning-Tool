@@ -70,6 +70,9 @@ export async function createProject(
     previewReviewedAt: null,
     latestRender: null,
     hasRenderOutput: false,
+    posterUrl: null,
+    publishedAt: null,
+    youtubeUrl: null,
     metadata: [],
     voiceSettings: defaultVoiceSettings(
       input.targetLanguage === "korean" ? "korean" : "english",
@@ -139,7 +142,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       .filter((project) => project.status === "draft")
       .slice(0, DASHBOARD_SECTION_LIMIT),
     completed: projects
-      .filter((project) => project.status === "completed")
+      .filter(
+        (project) =>
+          project.status === "completed" || project.status === "published",
+      )
       .slice(0, DASHBOARD_SECTION_LIMIT),
   };
 }
@@ -155,8 +161,17 @@ function summarise(projects: VideoProject[]): ProjectStats {
     shorts: countWhere((project) => producesShorts(project.format)),
     longVideos: countWhere((project) => producesLongForm(project.format)),
     drafts: countWhere((project) => project.status === "draft"),
-    inProgress: countWhere((project) => project.status === "in_progress"),
-    completed: countWhere((project) => project.status === "completed"),
+    // Everything between a draft and a finished video, whatever stage it
+    // stopped at.
+    inProgress: countWhere(
+      (project) =>
+        project.status !== "draft" &&
+        project.status !== "completed" &&
+        project.status !== "published",
+    ),
+    completed: countWhere(
+      (project) => project.status === "completed" || project.status === "published",
+    ),
   };
 }
 

@@ -78,6 +78,10 @@ export function toDomain(row: ProjectRow): VideoProject {
     hasRenderOutput: row.renderJobs.some(
       (job) => job.status === "completed" && job.outputFileName !== null,
     ),
+    // Newest first, so this is the most recent finished render's still.
+    posterUrl: posterUrlOf(row.renderJobs),
+    publishedAt: row.publishedAt?.toISOString() ?? null,
+    youtubeUrl: row.youtubeUrl,
     metadata: row.metadata.map(toStoredMetadata),
     pipeline: normalizePipeline(parseJson(row.pipeline, {})),
     createdAt: row.createdAt.toISOString(),
@@ -126,6 +130,14 @@ function toStoredScenes(row: Storyboard & { scenes: SceneRow[] }): StoredScenes 
     model: row.model,
     editedAt: row.editedAt?.toISOString() ?? null,
   };
+}
+
+function posterUrlOf(jobs: RenderJobRow[]): string | null {
+  const poster = jobs.find(
+    (job) => job.status === "completed" && job.posterFileName !== null,
+  )?.posterFileName;
+
+  return poster ? `/api/renders/${poster}` : null;
 }
 
 function toStoredMetadata(row: MetadataRow): StoredMetadata {
@@ -214,6 +226,8 @@ export function toProjectColumns(project: VideoProject) {
     previewReviewedAt: project.previewReviewedAt
       ? new Date(project.previewReviewedAt)
       : null,
+    publishedAt: project.publishedAt ? new Date(project.publishedAt) : null,
+    youtubeUrl: project.youtubeUrl,
     createdAt: new Date(project.createdAt),
     updatedAt: new Date(project.updatedAt),
   };

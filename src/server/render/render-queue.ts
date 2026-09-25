@@ -1,7 +1,7 @@
 import { getProjectRepository } from "@/server/repositories";
 import { getRenderJobRepository } from "@/server/repositories/render-job-repository";
 import { deleteRenderFile } from "@/server/render/render-storage";
-import { syncPipeline } from "@/server/services/pipeline-service";
+import { syncDerivedState } from "@/server/services/pipeline-service";
 import type { ProjectRepository } from "@/server/repositories";
 import type { RenderJobRepository } from "@/server/repositories/render-job-repository";
 import type { Renderer } from "@/server/render/renderer";
@@ -110,6 +110,7 @@ export async function runRenderJob(options: {
     outputFileName = result.outputFileName;
     await jobs.markCompleted(jobId, {
       fileName: result.outputFileName,
+      posterFileName: result.posterFileName,
       contentType: result.contentType,
       byteSize: result.byteSize,
     });
@@ -132,6 +133,6 @@ export async function runRenderJob(options: {
   // claiming a render is still running.
   const project = await projects.findById(job.projectId);
   if (project) {
-    await syncPipeline(project, projects);
+    await syncDerivedState(project, projects);
   }
 }

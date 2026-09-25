@@ -99,7 +99,12 @@ export class RenderJobRepository {
 
   async markCompleted(
     id: string,
-    output: { fileName: string; contentType: string; byteSize: number },
+    output: {
+      fileName: string;
+      posterFileName?: string | null;
+      contentType: string;
+      byteSize: number;
+    },
   ): Promise<void> {
     await this.db.renderJob.update({
       where: { id },
@@ -107,6 +112,7 @@ export class RenderJobRepository {
         status: "completed",
         progress: 100,
         outputFileName: output.fileName,
+        posterFileName: output.posterFileName ?? null,
         contentType: output.contentType,
         byteSize: output.byteSize,
         errorMessage: null,
@@ -130,9 +136,14 @@ export class RenderJobRepository {
    * The completed job that produced a given file. Looking the name up here is
    * what stops the serving route reading a file this app never rendered.
    */
-  async findCompletedByOutput(outputFileName: string): Promise<RenderJob | null> {
+  async findCompletedByOutput(fileName: string): Promise<RenderJob | null> {
     const row = await this.db.renderJob.findFirst({
-      where: { outputFileName, status: "completed" },
+      where: {
+        status: "completed",
+        // Either the video or the still taken from it; both are served by the
+        // same route, and both must belong to a finished job.
+        OR: [{ outputFileName: fileName }, { posterFileName: fileName }],
+      },
     });
     return row ? toDomain(row) : null;
   }
@@ -157,6 +168,7 @@ export function toDomain(row: RenderJobRow): RenderJob {
     progress: row.progress,
     errorMessage: row.errorMessage,
     outputUrl: row.outputFileName ? `/api/renders/${row.outputFileName}` : null,
+    posterUrl: row.posterFileName ? `/api/renders/${row.posterFileName}` : null,
     contentType: row.contentType,
     byteSize: row.byteSize,
     createdAt: row.createdAt.toISOString(),

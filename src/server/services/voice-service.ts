@@ -2,7 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getProjectRepository } from "@/server/repositories";
 import { sceneAudioRepository } from "@/server/repositories/scene-audio-repository";
 import { getProject } from "@/server/services/project-service";
-import { syncPipeline } from "@/server/services/pipeline-service";
+import { syncDerivedState } from "@/server/services/pipeline-service";
 import { deleteAudioFile, writeAudioFile } from "@/server/tts/audio-storage";
 import { getTextToSpeechProvider } from "@/server/tts";
 import type { VideoProject } from "@/types/project";
@@ -68,7 +68,7 @@ export async function generateSceneAudio(
     await deleteAudioFile(replaced);
   }
 
-  return syncPipeline(await getProject(projectId));
+  return syncDerivedState(await getProject(projectId));
 }
 
 export async function deleteSceneAudio(
@@ -87,7 +87,7 @@ export async function deleteSceneAudio(
     await deleteAudioFile(removed);
   }
 
-  return syncPipeline(await getProject(projectId));
+  return syncDerivedState(await getProject(projectId));
 }
 
 export async function updateVoiceSettings(

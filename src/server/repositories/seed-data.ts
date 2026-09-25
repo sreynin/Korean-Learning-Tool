@@ -10,7 +10,6 @@ import {
 import type {
   ProficiencyLevel,
   ProjectPipeline,
-  ProjectStatus,
   VideoFormat,
   VideoProject,
 } from "@/types/project";
@@ -21,7 +20,6 @@ interface SeedSpec {
   description: string;
   format: VideoFormat;
   level: ProficiencyLevel;
-  status: ProjectStatus;
 }
 
 const SEED_SPECS: SeedSpec[] = [
@@ -31,7 +29,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Everyday café vocabulary with the -요 polite ending.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "5 Ways to Say Thank You",
@@ -39,7 +36,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "감사합니다 vs 고마워 vs 고맙습니다 and when each fits.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Korean Particles 은/는 vs 이/가",
@@ -47,7 +43,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "The single most asked-about grammar point for learners.",
     format: "long",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Counting in Korean: Native vs Sino",
@@ -55,7 +50,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "When to use 하나/둘/셋 versus 일/이/삼.",
     format: "long",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Convenience Store Survival Korean",
@@ -63,7 +57,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Payment, bags, and point card phrases.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Honorifics Made Simple",
@@ -71,7 +64,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Reading the room: 반말, 해요체, and 합쇼체.",
     format: "long",
     level: "advanced",
-    status: "in_progress",
   },
   {
     title: "Korean Slang from K-Dramas",
@@ -79,7 +71,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "대박, 헐, 꿀잼 and how natural they actually sound.",
     format: "shorts",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Taxi Korean in 40 Seconds",
@@ -87,7 +78,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Destination, stops, and payment in one short ride.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "The Verb 하다 Explained",
@@ -95,7 +85,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Why so many Korean verbs end in 하다.",
     format: "long",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Hangul in 3 Minutes",
@@ -103,7 +92,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Consonants, vowels, and syllable blocks.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Restaurant Ordering Phrases",
@@ -111,7 +99,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "From 주문할게요 to 계산해 주세요.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Past Tense Without the Panic",
@@ -119,7 +106,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "았/었/였 and the vowel-harmony rule behind them.",
     format: "long",
     level: "intermediate",
-    status: "in_progress",
   },
   {
     title: "Asking for Directions",
@@ -127,7 +113,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "어디예요? plus the location words you actually need.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Korean Body Language & Etiquette",
@@ -135,7 +120,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Two-handed giving, bowing depth, and eye contact.",
     format: "long",
     level: "intermediate",
-    status: "draft",
   },
   {
     title: "10 Konglish Words That Confuse Everyone",
@@ -143,7 +127,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "핸드폰, 아파트, 서비스 and other false friends.",
     format: "shorts",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Making Plans with Friends",
@@ -151,7 +134,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "-을까? and -자 for natural invitations.",
     format: "shorts",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Korean Kinship Terms",
@@ -159,7 +141,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "언니, 오빠, 누나, 형 — including non-family use.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Subway Announcements Decoded",
@@ -167,7 +148,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "The fixed phrases repeated on every Seoul line.",
     format: "shorts",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Describing Your Day",
@@ -175,7 +155,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Connecting clauses with -고 and -아서/어서.",
     format: "shorts",
     level: "beginner",
-    status: "draft",
   },
   {
     title: "Korean Job Interview Phrases",
@@ -183,7 +162,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "자기소개 structure and respectful register.",
     format: "shorts",
     level: "advanced",
-    status: "completed",
   },
   {
     title: "Weather Small Talk",
@@ -191,7 +169,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "The safest conversation starter in any language.",
     format: "shorts",
     level: "beginner",
-    status: "completed",
   },
   {
     title: "Shopping & Bargaining at a Market",
@@ -199,7 +176,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Prices, discounts, and polite refusal.",
     format: "shorts",
     level: "intermediate",
-    status: "completed",
   },
   {
     title: "Indirect Speech in Korean",
@@ -207,7 +183,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "-다고 하다 and its contracted forms.",
     format: "shorts",
     level: "advanced",
-    status: "draft",
   },
   {
     title: "Pronunciation Rules That Trip Learners Up",
@@ -215,7 +190,6 @@ const SEED_SPECS: SeedSpec[] = [
     description: "Why 신라 sounds like 실라.",
     format: "shorts",
     level: "intermediate",
-    status: "completed",
   },
 ];
 
@@ -255,6 +229,9 @@ export function buildSeedProjects(now: Date = new Date()): VideoProject[] {
       previewReviewedAt: null,
       latestRender: null,
       hasRenderOutput: false,
+      posterUrl: null,
+      publishedAt: null,
+      youtubeUrl: null,
       metadata: [],
       pipeline: buildSeedPipeline(),
       createdAt: createdAt.toISOString(),

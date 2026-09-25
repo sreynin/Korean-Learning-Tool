@@ -13,6 +13,8 @@ export interface RenderWorkspace {
   directory: string;
   /** Name the finished file takes inside the render directory. */
   outputFileName: string;
+  /** Name of the still taken from it, used as the library thumbnail. */
+  posterFileName: string;
   dispose: () => Promise<void>;
 }
 
@@ -37,6 +39,7 @@ export async function createRenderWorkspace(
   return {
     directory,
     outputFileName: `${jobId}.mp4`,
+    posterFileName: `${jobId}.jpg`,
     dispose: () => rm(directory, { recursive: true, force: true }),
   };
 }

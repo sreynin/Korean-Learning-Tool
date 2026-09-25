@@ -39,6 +39,7 @@ export class PrismaProjectRepository implements ProjectRepository {
       where: {
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.format ? { format: filters.format } : {}),
+        ...(filters.level ? { level: filters.level } : {}),
         ...(search
           ? {
               OR: [

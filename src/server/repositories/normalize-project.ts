@@ -39,6 +39,9 @@ export function normalizeProject(raw: VideoProject): VideoProject {
     previewReviewedAt: project.previewReviewedAt ?? null,
     latestRender: project.latestRender ?? null,
     hasRenderOutput: project.hasRenderOutput ?? false,
+    posterUrl: project.posterUrl ?? null,
+    publishedAt: project.publishedAt ?? null,
+    youtubeUrl: project.youtubeUrl ?? null,
     metadata: project.metadata ?? [],
     voiceSettings:
       project.voiceSettings ??

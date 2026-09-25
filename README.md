@@ -14,7 +14,20 @@ script, written by the scene generator and consumed by the voice stage.
 
 ## Project status
 
-**Step 9 — YouTube metadata.** What works today:
+**Step 10 — Content library.** What works today:
+
+- **A project library at `/projects`** — cards showing a still from the
+  rendered video, title, topic, level, video type, duration, status, and when
+  the project was created and last touched. Filter by video type, level, or
+  stage; search title and topic. Each card runs Edit, Preview, Duplicate,
+  Render, Export, Mark published, and Delete without leaving the page
+
+
+- **Eight derived statuses** — draft, lesson ready, scenes ready, voice ready,
+  ready to render, rendering, completed, published — computed from what the
+  project actually contains, so a badge is never a claim about work that did
+  not happen. Only `published` is set by hand
+
 
 - **Title, description, hashtags, tags, thumbnail text, and a pinned comment**,
   written from the project's own lesson. Every field is editable and has its
@@ -55,19 +68,21 @@ script, written by the scene generator and consumed by the voice stage.
   learning objective, sections (Korean / romanization / translation /
   explanation / example), and a quiz — then reviewing and editing it before the
   next stage
-- Browsing, filtering, viewing, and deleting projects
 - A dashboard with live statistics
 - A REST API with validation and typed error handling
 - A component library, routing, loading states, and error boundaries
 
 **Not implemented yet:** asset generation, and uploading to YouTube. The
 metadata for an upload is written and editable; nothing publishes it yet.
+**"Mark published" records what you did on YouTube yourself** — a timestamp
+and an optional link. It uploads nothing and verifies nothing.
 
-Two things about rendering are worth knowing. Scenes have no imagery yet —
+One thing about rendering is worth knowing: scenes have no imagery yet —
 `visualPrompt` is a prompt, not a picture — so each scene's backdrop is the
-same deterministic gradient the preview draws. And there is no render button:
-start one with `POST /api/projects/:id/renders`, or with
-`npm run render:worker`, and poll the job for progress.
+same deterministic gradient the preview draws. A render is started from the
+Render button on a library card, from `POST /api/projects/:id/renders`, or
+from `npm run render:worker`. A finished render also supplies the library
+thumbnail, taken from the first scene that actually draws text.
 
 Without an `AI_API_KEY` the app falls back to mock generators that return
 clearly-labelled placeholder lessons, storyboards, and metadata, so the whole

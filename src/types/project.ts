@@ -12,8 +12,8 @@ import type { RenderJob } from "@/types/render";
  *   topic → lesson → scenes → assets → voice → captions → preview →
  *   render → youtube
  *
- * `topic`, `lesson`, and `scenes` are implemented. The remaining stages are
- * modelled so the UI can show real progress as each one is built.
+ * Every stage except `assets` is implemented; that one is modelled so the UI
+ * can show real progress once it is built.
  *
  * There is deliberately no separate "script" stage: a scene's `narration`
  * field is the spoken script, produced by the scene generator and consumed by
@@ -24,7 +24,27 @@ import type { RenderJob } from "@/types/render";
 export const VIDEO_FORMATS = ["shorts", "long", "both"] as const;
 export type VideoFormat = (typeof VIDEO_FORMATS)[number];
 
-export const PROJECT_STATUSES = ["draft", "in_progress", "completed"] as const;
+/**
+ * Where a project has got to, in production order.
+ *
+ * Like the pipeline stages, status is **derived from what the project
+ * contains** and never set by hand — `deriveProjectStatus()` computes it and
+ * `syncDerivedState()` persists it. It is stored rather than computed on read
+ * so the library can filter on it in SQL.
+ *
+ * `published` is the one that is not inferred from content: nothing uploads to
+ * YouTube yet, so it means the creator said they published it.
+ */
+export const PROJECT_STATUSES = [
+  "draft",
+  "lesson_ready",
+  "scenes_ready",
+  "voice_ready",
+  "ready_to_render",
+  "rendering",
+  "completed",
+  "published",
+] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 export const PROFICIENCY_LEVELS = [
@@ -123,6 +143,12 @@ export interface VideoProject {
   latestRender: RenderJob | null;
   /** True once any render has completed with an output file. */
   hasRenderOutput: boolean;
+  /** Still from the most recent finished render, or null. */
+  posterUrl: string | null;
+  /** ISO 8601 of when the creator said they published it, or null. */
+  publishedAt: string | null;
+  /** Where they published it, if they recorded a link. */
+  youtubeUrl: string | null;
   /** YouTube metadata, at most one document per cut the project produces. */
   metadata: StoredMetadata[];
   pipeline: ProjectPipeline;
@@ -152,7 +178,6 @@ export interface UpdateProjectInput {
   description?: string;
   format?: VideoFormat;
   level?: ProficiencyLevel;
-  status?: ProjectStatus;
   targetLanguage?: TargetLanguage;
   contentStyle?: ContentStyle;
   visualStyle?: VisualStyle;
@@ -163,6 +188,7 @@ export interface UpdateProjectInput {
 export interface ProjectListFilters {
   status?: ProjectStatus;
   format?: VideoFormat;
+  level?: ProficiencyLevel;
   /** Case-insensitive match against title and topic. */
   search?: string;
 }

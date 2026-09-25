@@ -2,7 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getMetadataGenerator } from "@/server/ai";
 import { getProjectRepository } from "@/server/repositories";
 import { getProject } from "@/server/services/project-service";
-import { syncPipeline } from "@/server/services/pipeline-service";
+import { syncDerivedState } from "@/server/services/pipeline-service";
 import { TARGET_LANGUAGE_META } from "@/lib/constants";
 import { metadataFor, metadataFormats } from "@/types/metadata";
 import { producesShorts } from "@/types/project";
@@ -122,7 +122,6 @@ async function save(
       ...project.metadata.filter((entry) => entry.format !== options.format),
       stored,
     ],
-    status: project.status === "draft" ? "in_progress" : project.status,
     updatedAt: now,
   });
 
@@ -130,7 +129,7 @@ async function save(
     throw new NotFoundError(`No project found with id "${project.id}".`);
   }
 
-  return syncPipeline(updated);
+  return syncDerivedState(updated);
 }
 
 /**

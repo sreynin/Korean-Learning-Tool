@@ -12,6 +12,7 @@ export const GET = route(async (request: Request) => {
   const filters = projectListFiltersSchema.safeParse({
     status: params.get("status") ?? undefined,
     format: params.get("format") ?? undefined,
+    level: params.get("level") ?? undefined,
     search: params.get("search") ?? undefined,
   });
 

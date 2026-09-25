@@ -3,7 +3,7 @@ import { access, rm } from "node:fs/promises";
 import { after, before, describe, test } from "node:test";
 import { GET as SERVE } from "@/app/api/renders/[fileName]/route";
 import { probeMedia } from "@/server/render/ffmpeg";
-import { FfmpegRenderer } from "@/server/render/ffmpeg-renderer";
+import { FfmpegRenderer, posterOffset } from "@/server/render/ffmpeg-renderer";
 import { renderFilePath } from "@/server/render/render-storage";
 import { RenderJobRepository } from "@/server/repositories/render-job-repository";
 import { PrismaProjectRepository } from "@/server/repositories/prisma-project-repository";
@@ -79,6 +79,8 @@ async function renderProject(options: {
   });
 
   written.push(result.outputFileName);
+  // The poster lands in the same directory and is just as much test litter.
+  if (result.posterFileName) written.push(result.posterFileName);
   return { result, progress };
 }
 
@@ -387,3 +389,50 @@ async function writeTestClip(): Promise<string> {
 
   return writeAudioFile(bytes, "wav");
 }
+
+describe("the library thumbnail", () => {
+  test("skips an opening scene that draws no text", () => {
+    const offset = posterOffset([
+      makeScene({ duration: 3, koreanText: "", englishText: "", romanization: "" }),
+      makeScene({ duration: 4, koreanText: "안녕하세요" }),
+    ]);
+
+    assert.equal(offset, 4, "one second into the first scene with something on it");
+  });
+
+  test("uses the opening second when the first scene already has text", () => {
+    const offset = posterOffset([makeScene({ duration: 4, koreanText: "안녕하세요" })]);
+
+    assert.equal(offset, 1);
+  });
+
+  test("skips a text scene too short to still be on screen", () => {
+    const offset = posterOffset([
+      makeScene({ duration: 1, koreanText: "짧아요" }),
+      makeScene({ duration: 5, koreanText: "안녕하세요" }),
+    ]);
+
+    assert.equal(offset, 2);
+  });
+
+  test("falls back to the opening second when no scene has text", () => {
+    const offset = posterOffset([
+      makeScene({ duration: 3, koreanText: "", englishText: "", romanization: "" }),
+      makeScene({ duration: 3, koreanText: "", englishText: "", romanization: "" }),
+    ]);
+
+    assert.equal(offset, 1);
+  });
+
+  test("a rendered project gets a poster that is really on disk", async () => {
+    const project = projectWith([
+      makeScene({ duration: 1, koreanText: "", englishText: "", romanization: "" }),
+      makeScene({ duration: 2, koreanText: "안녕하세요", englishText: "Hello" }),
+    ]);
+
+    const { result } = await renderProject({ project, format: "shorts" });
+
+    assert.ok(result.posterFileName, "a poster was produced");
+    await access(renderFilePath(result.posterFileName!));
+  });
+});
